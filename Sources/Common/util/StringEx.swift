@@ -20,6 +20,11 @@ extension String {
 
     public var singleQuoted: String { "'" + self + "'" }
     public var doubleQuoted: String { "\"" + self + "\"" }
+
+    /// Literal substring search without treating the needle as a regex or a pattern language
+    public func contains(caseInsensitiveLiteral needle: String) -> Bool {
+        range(of: needle, options: .caseInsensitive) != nil
+    }
 }
 
 extension [String] {

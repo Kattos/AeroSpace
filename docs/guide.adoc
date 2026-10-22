@@ -664,26 +664,25 @@ xref:./goodies.adoc#show-aerospace-workspaces-in-sketchybar[]
 [#auto-place]
 == 'auto-place' rules
 
-`auto-place` is a list of rules that assign already existing windows to their preferred workspaces.
+`auto-place` maps an existing window to a workspace based on the label that the Option chooser displays for it.
 It's a declarative alternative to xref:./commands.adoc#move-node-to-workspace[move-node-to-workspace] bindings
 for people who don't want windows to be moved the moment they appear.
 
 [source,toml]
 ----
-[[auto-place]]
-if.app-id = 'com.tencent.WeWorkMac'
-workspace = '1'
-
-[[auto-place]]
-if.app-name-regex-substring = 'chrome'
-workspace = 'W'
+[auto-place]
+"企业微信" = 1
+"herdr" = "A"
+"QQ" = "Q"
 ----
 
-Every rule has a mandatory `workspace` key and a mandatory `if` table with at least one of these matchers:
+The table maps a literal substring of the displayed label to the target workspace.
+The workspace accepts either a TOML integer or a TOML string. Integers are converted to workspace names,
+so an integer target only works for numeric workspace names - quote letter workspace names: `"herdr" = "A"`.
 
-* `app-id` - exact match of the application bundle ID
-* `app-name-regex-substring` - case insensitive regex match against the application name
-* `window-title-regex-substring` - case insensitive regex match against the window title
+Every application is matched by the name that the Option chooser shows for it.
+Ghostty windows are additionally matched by their window title, so a Ghostty window lands on a workspace according
+to what it runs. Characters such as `.` or `[` are matched literally and are not treated as a regex.
 
 The rules themselves do nothing. The windows are placed when you run:
 [source,bash]
@@ -691,10 +690,9 @@ The rules themselves do nothing. The windows are placed when you run:
 aerospace auto-place
 ----
 
-The rules are processed in the order they are defined.
-The first matching rule wins, and each window is moved at most once.
-All the matchers of a single rule are conjunctive - the rule matches only if all the specified matchers match.
-The matchers have the same semantics as the xref:./guide.adoc#on-window-detected-callback[legacy `on-window-detected` syntax].
+The rules are processed in the order they are defined, and the first matching rule wins.
+The order matters when one pattern is a substring of another: with both `"微信"` and `"企业微信"` present,
+the first one listed takes the window.
 
 The command only moves tiling and floating windows.
 Popup, macOS native fullscreen, macOS native minimized, hidden apps, and unbound windows are skipped.
@@ -703,7 +701,7 @@ The command doesn't change the focus, but a focused window that is moved away ca
 so focus follows the window.
 
 IMPORTANT: A valid workspace name that doesn't exist yet is created on demand.
-A typo in `workspace` therefore silently creates a new workspace.
+A typo in a target therefore silently creates a new workspace.
 
 [#environment-variables]
 == Environment variables

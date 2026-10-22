@@ -159,7 +159,7 @@ private let configParser: [String: any ParserProtocol<Config>] = [
     "workspace-chooser": Parser(\.workspaceChooser, parseWorkspaceChooser),
     "workspace-to-monitor-force-assignment": Parser(\.workspaceToMonitorForceAssignment, parseWorkspaceToMonitorAssignment),
     "on-window-detected": Parser(\.onWindowDetected, parseOnWindowDetectedArray),
-    "auto-place": Parser(\.autoPlace, parseAutoPlaceArray),
+    "auto-place": Parser(\.autoPlace, parseAutoPlace),
 
     // Deprecated
     "non-empty-workspaces-root-containers-layout-on-startup": Parser(\._nonEmptyWorkspacesRootContainersLayoutOnStartup, parseStartupRootContainerLayout),
@@ -249,12 +249,13 @@ struct ParseConfigResult {
         let json = tomlAnyToOrderedJsonRecursive(any: dict, .emptyRoot, &errors.value)
         switch json {
             case .dict(var dict):
-                // Chooser color priority follows source order, unlike the other sorted config tables.
-                let key = "workspace-chooser-colors"
-                if let table = try? toml.table(forKey: key), let values = dict[key]?.asDictOrNil {
-                    var ordered = OrderedJson.JsonDict()
-                    for pattern in table.keys { ordered[pattern] = values[pattern] }
-                    dict[key] = .dict(ordered)
+                // These tables are priority-ordered, unlike the other sorted config tables.
+                for key in ["workspace-chooser-colors", "auto-place"] {
+                    if let table = try? toml.table(forKey: key), let values = dict[key]?.asDictOrNil {
+                        var ordered = OrderedJson.JsonDict()
+                        for pattern in table.keys { ordered[pattern] = values[pattern] }
+                        dict[key] = .dict(ordered)
+                    }
                 }
                 rawTable = dict
             default: // dead code

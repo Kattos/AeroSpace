@@ -23,6 +23,10 @@ The command applies the xref:guide.adoc#auto-place[`auto-place` config option] t
 Unlike xref:commands.adoc#run-callback[`run-callback on-window-detected`], it doesn't run your `on-window-detected` callbacks,
 and it doesn't run any shell commands. It only moves windows, and it never launches applications.
 
+A window is matched against the label that the Option chooser displays for it: the application name for every app,
+plus the window title for Ghostty windows. The `auto-place` table maps a case insensitive literal substring of that
+label to a workspace; the first matching rule in the config order wins.
+
 Only ordinary tiling and floating windows are considered.
 Popup, unbound, macOS native fullscreen, macOS native minimized, and hidden apps windows are skipped.
 A matched floating window stays floating.
@@ -33,7 +37,7 @@ The command prints the number of moved, unchanged, unmatched, and skipped window
 It exits with a non-zero code if a window can't be matched or moved.
 
 IMPORTANT: A workspace that is a valid name but doesn't exist yet is created on demand.
-A typo in `workspace` therefore silently creates a new workspace instead of reporting an error.
+A typo in a target therefore silently creates a new workspace instead of reporting an error.
 
 // end::body[]
 

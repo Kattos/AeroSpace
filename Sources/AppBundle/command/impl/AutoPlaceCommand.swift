@@ -26,11 +26,19 @@ struct AutoPlaceCommand: Command {
                 continue
             }
             // The first matching rule in the config order wins
+            // The full Ghostty label is fetched lazily at most once per window, and only if no earlier
+            // app-name match decides the rule
+            var cachedGhosttyLabel: String? = nil
             var matched: AutoPlaceRule? = nil
             var failed = false
             for rule in config.autoPlace {
                 do {
-                    if try await rule.matches(window) {
+                    if try await rule.matches(window, ghosttyLabel: {
+                        if let cachedGhosttyLabel { return cachedGhosttyLabel }
+                        let label = try await autoPlaceGhosttyLabel(window)
+                        cachedGhosttyLabel = label
+                        return label
+                    }) {
                         matched = rule
                         break
                     }
@@ -46,8 +54,7 @@ struct AutoPlaceCommand: Command {
                 unmatched += 1
                 continue
             }
-            // 'workspace' is mandatory and validated by the parser
-            let targetWorkspace = Workspace.get(byName: rule.workspace.orDie().raw)
+            let targetWorkspace = Workspace.get(byName: rule.workspace.raw)
             if targetWorkspace == currentWorkspace {
                 unchanged += 1
                 continue
@@ -61,4 +68,13 @@ struct AutoPlaceCommand: Command {
         io.out("auto-place: moved \(moved), unchanged \(unchanged), unmatched \(unmatched), skipped \(skipped)")
         return failures == 0 ? .succ : .fail
     }
+}
+
+/// The label the Option chooser displays for a Ghostty window: the app name plus the actual current window title,
+/// normalized the same way as the chooser but never truncated. The title is read on demand rather than reusing the
+/// chooser's cache, because the cache is only populated while the chooser is visible.
+@MainActor
+private func autoPlaceGhosttyLabel(_ window: Window) async throws -> String {
+    let appName = window.app.name?.takeIf { !$0.isEmpty } ?? "Ghostty"
+    return ghosttyWorkspaceLabel(appName: appName, title: sanitizedWorkspaceTitle(try await window.getTitle(.nonCancellable)))
 }

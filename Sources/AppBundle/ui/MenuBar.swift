@@ -61,6 +61,23 @@ public func menuBar(viewModel: TrayMenuModel) -> some Scene { // todo should it 
             getExperimentalUISettingsMenu(viewModel: viewModel)
             openConfigButton()
             reloadConfigButton(warningsAsErrors: false)
+            if let token: RunSessionGuard = .isServerEnabled {
+                Button("Auto Place") {
+                    Task.startUnstructured {
+                        try await runLightSession(.menuBarButton, token) {
+                            let result = await AutoPlaceCommand(args: AutoPlaceCmdArgs(rawArgs: []))
+                                .run(.defaultEnv, .emptyStdin)
+                            if result.exitCode.rawValue != 0 {
+                                MessageModel.shared.message = Message(
+                                    description: "Auto Place failed",
+                                    body: result.stderr.isEmpty ? "Auto Place failed." : result.stderr.joined(separator: "\n"),
+                                    containsWarnings: false,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         } else {
             Button("AeroSpace requires accessibility permission to move windows") {
                 viewModel.axPermissionStatus = .waitingWithPrompt

@@ -661,6 +661,50 @@ Besides the <<exec-env-vars,`exec.env-vars`>>, the process has access to the fol
 For a more elaborate example on how to integrate with Sketchybar see
 xref:./goodies.adoc#show-aerospace-workspaces-in-sketchybar[]
 
+[#auto-place]
+== 'auto-place' rules
+
+`auto-place` is a list of rules that assign already existing windows to their preferred workspaces.
+It's a declarative alternative to xref:./commands.adoc#move-node-to-workspace[move-node-to-workspace] bindings
+for people who don't want windows to be moved the moment they appear.
+
+[source,toml]
+----
+[[auto-place]]
+if.app-id = 'com.tencent.WeWorkMac'
+workspace = '1'
+
+[[auto-place]]
+if.app-name-regex-substring = 'chrome'
+workspace = 'W'
+----
+
+Every rule has a mandatory `workspace` key and a mandatory `if` table with at least one of these matchers:
+
+* `app-id` - exact match of the application bundle ID
+* `app-name-regex-substring` - case insensitive regex match against the application name
+* `window-title-regex-substring` - case insensitive regex match against the window title
+
+The rules themselves do nothing. The windows are placed when you run:
+[source,bash]
+----
+aerospace auto-place
+----
+
+The rules are processed in the order they are defined.
+The first matching rule wins, and each window is moved at most once.
+All the matchers of a single rule are conjunctive - the rule matches only if all the specified matchers match.
+The matchers have the same semantics as the xref:./guide.adoc#on-window-detected-callback[legacy `on-window-detected` syntax].
+
+The command only moves tiling and floating windows.
+Popup, macOS native fullscreen, macOS native minimized, hidden apps, and unbound windows are skipped.
+The command never launches applications, never runs shell commands, and never focuses the target workspace.
+The command doesn't change the focus, but a focused window that is moved away can't stay focused on the old workspace,
+so focus follows the window.
+
+IMPORTANT: A valid workspace name that doesn't exist yet is created on demand.
+A typo in `workspace` therefore silently creates a new workspace.
+
 [#environment-variables]
 == Environment variables
 

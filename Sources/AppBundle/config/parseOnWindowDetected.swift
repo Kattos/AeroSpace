@@ -81,7 +81,7 @@ private let matcherParsers: [String: any ParserProtocol<LegacyWindowDetectedCall
     "during-aerospace-startup": Parser(\.duringAeroSpaceStartup, upcast(parseBool)),
 ]
 
-private func upcast<T>(
+func upcast<T>(
     _ fun: @escaping @Sendable (OrderedJson, ConfigBacktrace) -> ResOrConfigParseDiagnostic<T>,
 ) -> @Sendable (OrderedJson, ConfigBacktrace) -> ResOrConfigParseDiagnostic<T?> {
     { fun($0, $1).map(Optional.init) }
@@ -96,7 +96,7 @@ func parseOnWindowDetectedArray(_ raw: OrderedJson, _ backtrace: ConfigBacktrace
     }
 }
 
-private func parseCasInsensitiveRegex(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<CaseInsensitiveRegex> {
+func parseCasInsensitiveRegex(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<CaseInsensitiveRegex> {
     parseString(raw, backtrace).flatMap { CaseInsensitiveRegex.new($0).toParsedConfig(backtrace) }
 }
 

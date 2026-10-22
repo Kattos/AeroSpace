@@ -1,6 +1,9 @@
 // FILE IS GENERATED FROM docs/aerospace-*.adoc files
 // TO REGENERATE THE FILE RUN generate.sh
 
+let auto_place_help_generated = """
+    USAGE: auto-place [-h|--help]
+    """
 let balance_sizes_help_generated = """
     USAGE: balance-sizes [-h|--help] [--workspace <workspace>]
     """

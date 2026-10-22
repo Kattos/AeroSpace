@@ -5,6 +5,13 @@ include::util/header.adoc[]
 
 Commands documentation is also available as manpages.
 
+== auto-place
+----
+include::aerospace-auto-place.adoc[tags=synopsis]
+----
+include::aerospace-auto-place.adoc[tags=purpose]
+include::aerospace-auto-place.adoc[tags=body]
+
 == balance-sizes
 ----
 include::aerospace-balance-sizes.adoc[tags=synopsis]

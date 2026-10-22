@@ -2,6 +2,7 @@
 // TO REGENERATE THE FILE RUN generate.sh
 
 let subcommandDescriptions = [
+    ["  auto-place", "Move already existing windows to their preferred workspaces"],
     ["  balance-sizes", "Balance sizes of all windows in the current workspace"],
     ["  close-all-windows-but-current", "On the focused workspace, close all windows but current"],
     ["  close", "Close the focused window"],

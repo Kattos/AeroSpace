@@ -1,0 +1,53 @@
+= aerospace-auto-place(1)
+include::util/man-attributes.adoc[]
+:manname: aerospace-auto-place
+// tag::purpose[]
+:manpurpose: Move already existing windows to their preferred workspaces
+// end::purpose[]
+
+// =========================================================== Synopsis
+== Synopsis
+[verse]
+// tag::synopsis[]
+aerospace auto-place [-h|--help]
+
+// end::synopsis[]
+
+// =========================================================== Description
+== Description
+
+// tag::body[]
+{manpurpose}
+
+The command applies the xref:guide.adoc#auto-place[`auto-place` config option] to the currently existing windows.
+Unlike xref:commands.adoc#run-callback[`run-callback on-window-detected`], it doesn't run your `on-window-detected` callbacks,
+and it doesn't run any shell commands. It only moves windows, and it never launches applications.
+
+Only ordinary tiling and floating windows are considered.
+Popup, unbound, macOS native fullscreen, macOS native minimized, and hidden apps windows are skipped.
+A matched floating window stays floating.
+The command doesn't move the focus to the target workspace, but a focused window that is moved away can't stay focused
+on the old workspace, so the focus follows the window.
+
+The command prints the number of moved, unchanged, unmatched, and skipped windows.
+It exits with a non-zero code if a window can't be matched or moved.
+
+IMPORTANT: A workspace that is a valid name but doesn't exist yet is created on demand.
+A typo in `workspace` therefore silently creates a new workspace instead of reporting an error.
+
+// end::body[]
+
+// =========================================================== Options
+include::util/conditional-options-header.adoc[]
+
+-h, --help:: Print help
+
+// =========================================================== Exit code
+include::util/conditional-exit-code-header.adoc[]
+
+`0` - all the windows were processed
++
+`2` - at least one window couldn't be matched or moved
+
+// =========================================================== Footer
+include::util/man-footer.adoc[]

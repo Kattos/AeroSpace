@@ -8,6 +8,8 @@ extension CmdArgs {
                 command = FalseCommand(args: self as! FalseCmdArgs)
             case ._true:
                 command = TrueCommand(args: self as! TrueCmdArgs)
+            case .autoPlace:
+                command = AutoPlaceCommand(args: self as! AutoPlaceCmdArgs)
             case .balanceSizes:
                 command = BalanceSizesCommand(args: self as! BalanceSizesCmdArgs)
             case .close:

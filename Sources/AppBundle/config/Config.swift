@@ -51,6 +51,8 @@ struct Config: ConvenienceMutable {
     var keyMapping = KeyMapping()
     var execConfig: ExecConfig = ExecConfig()
     var focusFollowsMouse: FocusFollowsMouse = FocusFollowsMouse()
+    var workspaceChooserColors: [(pattern: String, rgb: UInt32)] = []
+    var workspaceChooser = WorkspaceChooserSettings()
 
     var onFocusChanged: Shell<any Command> = .empty
     // var onFocusedWorkspaceChanged: [any Command] = []
@@ -66,6 +68,11 @@ struct Config: ConvenienceMutable {
 
 struct FocusFollowsMouse: ConvenienceMutable {
     var enabled: Bool = false
+}
+
+struct WorkspaceChooserSettings: ConvenienceMutable, Equatable {
+    var adaptiveColumns = true
+    var hideEmptyWorkspaces = false
 }
 
 enum ConfigVersion: Int, Comparable, CaseIterable, Sendable, CustomStringConvertible {

@@ -52,6 +52,8 @@ struct ReloadConfigResult {
         TrayMenuModel.shared.lastReloadConfigContainedWarnings = containsWarnings
         resetHotKeys()
         config = parseResult.config
+        TrayMenuModel.shared.workspaceChooserColors = config.workspaceChooserColors
+        TrayMenuModel.shared.workspaceChooser = config.workspaceChooser
         configUrl = result.configUrl
         await activateMode_nonCancellable(activeMode)
         syncStartAtLogin()

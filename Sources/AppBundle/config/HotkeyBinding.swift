@@ -31,6 +31,7 @@ extension HotKey {
     for binding in targetBindings.values where !hotkeys.keys.contains(binding.descriptionWithKeyCode) {
         hotkeys[binding.descriptionWithKeyCode] = HotKey(key: binding.keyCode, modifiers: binding.modifiers, keyDownHandler: {
             Task.startUnstructured {
+                WorkspaceChooser.shared.cancel()
                 if let activeMode {
                     broadcastEvent(.bindingTriggered(
                         mode: activeMode,

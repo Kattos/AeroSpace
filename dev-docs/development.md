@@ -57,6 +57,19 @@ If you only plan to build the debug version of AeroSpace, you can run it from th
     This script is "work in progress".
     Use it on your own risk.
 
+### Using the locally built CLI
+
+`~/.local/bin/aerospace` is a symlink to the SPM release binary:
+
+```bash
+swift build -c release --arch arm64 -Xswiftc -warnings-as-errors
+ln -sfn "$PWD/.build/arm64-apple-macosx/release/aerospace" ~/.local/bin/aerospace
+```
+
+`swift build` rewrites the binary in place, so the symlink keeps pointing at the newest
+build and only needs to be created once. Each new subcommand still requires the matching
+`AeroSpace.app` to be running, because the CLI only forwards the request to the server.
+
 ## IDE
 
 -   You can obviously [open the project in Xcode](#xcode).

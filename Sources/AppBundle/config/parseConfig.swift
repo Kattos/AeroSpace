@@ -155,6 +155,8 @@ private let configParser: [String: any ParserProtocol<Config>] = [
 
     "gaps": Parser(\.gaps, parseGaps),
     "focus-follows-mouse": Parser(\.focusFollowsMouse, parseFocusFollowsMouse),
+    "workspace-chooser-colors": Parser(\.workspaceChooserColors, parseWorkspaceChooserColors),
+    "workspace-chooser": Parser(\.workspaceChooser, parseWorkspaceChooser),
     "workspace-to-monitor-force-assignment": Parser(\.workspaceToMonitorForceAssignment, parseWorkspaceToMonitorAssignment),
     "on-window-detected": Parser(\.onWindowDetected, parseOnWindowDetectedArray),
     "auto-place": Parser(\.autoPlace, parseAutoPlaceArray),
@@ -242,10 +244,19 @@ struct ParseConfigResult {
 
     let rawTable: OrderedJson.JsonDict
     do {
-        let dict: [String: Any] = try .init(try TOMLTable(source: rawToml))
+        let toml = try TOMLTable(source: rawToml)
+        let dict: [String: Any] = try .init(toml)
         let json = tomlAnyToOrderedJsonRecursive(any: dict, .emptyRoot, &errors.value)
         switch json {
-            case .dict(let dict): rawTable = dict
+            case .dict(var dict):
+                // Chooser color priority follows source order, unlike the other sorted config tables.
+                let key = "workspace-chooser-colors"
+                if let table = try? toml.table(forKey: key), let values = dict[key]?.asDictOrNil {
+                    var ordered = OrderedJson.JsonDict()
+                    for pattern in table.keys { ordered[pattern] = values[pattern] }
+                    dict[key] = .dict(ordered)
+                }
+                rawTable = dict
             default: // dead code
                 let msg = "Config parsing error: the top level type must be a TOML Table. But got: \((json ?? .null).tomlType)"
                 errors.value.append(.init(.emptyRoot, msg, preventConfigReload: true))
@@ -332,6 +343,43 @@ func parseInt(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigPa
 
 func parseString(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<String> {
     raw.asStringOrNil.toResult(expectedActualTypeDiagnostic(expected: .string, actual: raw.tomlType, backtrace))
+}
+
+private let workspaceChooserParser: [String: any ParserProtocol<WorkspaceChooserSettings>] = [
+    "adaptive-columns": Parser(\.adaptiveColumns, parseBool),
+    "hide-empty-workspaces": Parser(\.hideEmptyWorkspaces, parseBool),
+]
+
+func parseWorkspaceChooser(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout ConfigParserContext) -> WorkspaceChooserSettings {
+    parseTable(raw, WorkspaceChooserSettings(), workspaceChooserParser, backtrace, &c)
+}
+
+func parseWorkspaceChooserColors(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout ConfigParserContext) -> [(pattern: String, rgb: UInt32)] {
+    guard let table = raw.asDictOrNil else {
+        c.errors.append(expectedActualTypeDiagnostic(expected: .table, actual: raw.tomlType, backtrace))
+        return []
+    }
+    var colors: [(pattern: String, rgb: UInt32)] = []
+    for (pattern, rawColor) in table {
+        let backtrace = backtrace + .key(pattern)
+        guard !pattern.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            c.errors.append(.init(backtrace, "Display label substring must not be empty or whitespace-only"))
+            continue
+        }
+        guard let rgb = parseWorkspaceChooserColor(rawColor, backtrace).getOrNil(appendErrorTo: &c.errors) else { continue }
+        colors.append((pattern, rgb))
+    }
+    return colors
+}
+
+func parseWorkspaceChooserColor(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<UInt32> {
+    parseString(raw, backtrace).flatMap { color in
+        guard color.utf8.count == 7, color.first == "#",
+              color.utf8.dropFirst().allSatisfy({ (48 ... 57).contains($0) || (65 ... 70).contains($0) || (97 ... 102).contains($0) }),
+              let rgb = UInt32(color.dropFirst(), radix: 16)
+        else { return .failure(.init(backtrace, "Expected a color in #RRGGBB format")) }
+        return .success(rgb)
+    }
 }
 
 func parseSimpleType<T>(_ raw: OrderedJson, ofType: T.Type) -> T? {

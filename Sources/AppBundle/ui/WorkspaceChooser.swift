@@ -145,9 +145,17 @@ struct WorkspaceChooserLayout {
         let maxHeight = max(1, availableSize.height - 48)
         let fittingRows = max(1, Int(max(0, maxHeight - 88) / 36))
         let fittingColumns = max(1, Int(max(0, maxWidth - 24 + 12) / 252))
-        columnCount = settings.adaptiveColumns ? min((count + fittingRows - 1) / fittingRows, fittingColumns) : 1
-        rowsPerColumn = settings.adaptiveColumns
-            ? max(min(count, fittingRows), (count + columnCount - 1) / columnCount) : count
+        switch settings.columns {
+            case .auto:
+                columnCount = min((count + fittingRows - 1) / fittingRows, fittingColumns)
+                rowsPerColumn = max(min(count, fittingRows), (count + columnCount - 1) / columnCount)
+            case .fixed:
+                columnCount = min(2, count)
+                rowsPerColumn = (count + columnCount - 1) / columnCount
+            case .single:
+                columnCount = 1
+                rowsPerColumn = count
+        }
         size = CGSize(
             width: min(maxWidth, CGFloat(columnCount) * 336 + CGFloat(columnCount - 1) * 12 + 24),
             height: min(maxHeight, CGFloat(rowsPerColumn) * 36 + 88),

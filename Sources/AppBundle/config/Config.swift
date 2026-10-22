@@ -71,8 +71,12 @@ struct FocusFollowsMouse: ConvenienceMutable {
 }
 
 struct WorkspaceChooserSettings: ConvenienceMutable, Equatable {
-    var adaptiveColumns = true
+    var columns: WorkspaceChooserColumns = .auto
     var hideEmptyWorkspaces = false
+}
+
+enum WorkspaceChooserColumns: String {
+    case auto, fixed, single
 }
 
 enum ConfigVersion: Int, Comparable, CaseIterable, Sendable, CustomStringConvertible {

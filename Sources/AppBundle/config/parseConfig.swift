@@ -346,12 +346,24 @@ func parseString(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfi
 }
 
 private let workspaceChooserParser: [String: any ParserProtocol<WorkspaceChooserSettings>] = [
-    "adaptive-columns": Parser(\.adaptiveColumns, parseBool),
+    "columns": Parser(\.columns, parseWorkspaceChooserColumns),
+    "adaptive-columns": Parser(\.columns, { raw, backtrace in parseBool(raw, backtrace).map { $0 ? .auto : .single } }),
     "hide-empty-workspaces": Parser(\.hideEmptyWorkspaces, parseBool),
 ]
 
 func parseWorkspaceChooser(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout ConfigParserContext) -> WorkspaceChooserSettings {
-    parseTable(raw, WorkspaceChooserSettings(), workspaceChooserParser, backtrace, &c)
+    if let table = raw.asDictOrNil, table["columns"] != nil, table["adaptive-columns"] != nil {
+        c.errors.append(.init(backtrace, "Specify only one of 'columns' and 'adaptive-columns'"))
+        return WorkspaceChooserSettings()
+    }
+    return parseTable(raw, WorkspaceChooserSettings(), workspaceChooserParser, backtrace, &c)
+}
+
+func parseWorkspaceChooserColumns(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<WorkspaceChooserColumns> {
+    parseString(raw, backtrace).flatMap { value in
+        WorkspaceChooserColumns(rawValue: value)
+            .toResult(.init(backtrace, "Expected 'auto', 'fixed', or 'single'"))
+    }
 }
 
 func parseWorkspaceChooserColors(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout ConfigParserContext) -> [(pattern: String, rgb: UInt32)] {

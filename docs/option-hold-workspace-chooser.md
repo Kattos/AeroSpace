@@ -16,15 +16,27 @@ These independent settings control the Option chooser only:
 
 ```toml
 [workspace-chooser]
-adaptive-columns = true
+columns = "auto"
 hide-empty-workspaces = false
 ```
 
-These are also the defaults when the table or either setting is absent. Values
-must be booleans; unknown keys produce configuration errors. The separate
+These are also the defaults when the table or either setting is absent. `columns`
+accepts only `"auto"`, `"fixed"`, or `"single"`; `hide-empty-workspaces` must be a
+boolean. Unknown keys and invalid types/values produce configuration errors. The separate
 `[workspace-chooser-colors]` table continues to control entry colors and bold text.
 
-Adaptive columns fill from top to bottom, then left to right, preserving workspace
+Use `columns = "fixed"` for exactly two balanced columns: the first holds
+`ceil(workspaceCount / 2)` rows and the second holds the remainder. Zero or one
+retained workspace uses one column. Fixed mode keeps two columns even when a tall
+screen could fit all rows in one; 31 workspaces split 16/15. On narrow screens the
+columns narrow and text truncates. Fixed mode never adds a third column to fit
+height. Use `columns = "single"` for the original single-column presentation.
+
+The existing `adaptive-columns` boolean remains a compatibility alias:
+`true` means `columns = "auto"`, and `false` means `columns = "single"`. Prefer
+the new `columns` key; specifying both keys is a configuration error.
+
+Automatic columns (`columns = "auto"`) fill from top to bottom, then left to right, preserving workspace
 order. The chooser calculates row capacity from the selected screen's visible
 height, keeping 34-point rows, 2-point spacing and room for the header/footer.
 It creates only the needed columns, aiming for 336 points of row width per column.
@@ -44,8 +56,8 @@ this chooser: it does not remove workspaces or change shortcut targets. Filterin
 runs before geometry is calculated, and both settings update an open panel on
 configuration reload, as do changes to its workspace list.
 
-With adaptive columns disabled, the existing single-column presentation is used.
-If rows exceed the available height, its scroll view remains, but this click-through
+In fixed or single mode, if rows exceed available height, the scroll view remains,
+but this click-through
 panel offers no practical mouse scrolling. Extremely narrow/short screens or very
 large workspace counts can also exceed the adaptive layout's readable capacity;
 all entries remain in the scroll view rather than being dropped. Adaptive columns
@@ -188,6 +200,11 @@ signature and has not been launched or installed. Earlier bundles are preserved.
 
 The title-colors build is packaged separately at
 `.build/title-colors/AeroSpace-Release.app`, using the app-colors metadata and
+resources and a freshly compiled Release executable. It is ad hoc signed and has
+not been launched or installed; earlier bundles are preserved.
+
+The fixed-column build is packaged separately at
+`.build/fixed-columns/AeroSpace-Release.app`, using the auto-place metadata and
 resources and a freshly compiled Release executable. It is ad hoc signed and has
 not been launched or installed; earlier bundles are preserved.
 

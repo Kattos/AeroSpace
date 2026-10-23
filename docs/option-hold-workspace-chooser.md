@@ -1,6 +1,10 @@
 # Option workspace chooser
 
-Hold either Option key on its own for 0.4 seconds to show the workspace list.
+Hold either Option key on its own for 0.4 seconds by default to show the workspace list.
+Set a positive integer `hold-threshold-ms` under `[workspace-chooser]` to change
+the delay in milliseconds, for example `hold-threshold-ms = 250`. The default is
+`400`; the timer checks every 50 milliseconds, so presentation may be slightly
+later than the configured threshold. Reloading the config updates the threshold.
 The list uses the same workspace names, application summaries and focus state as
 the menu bar menu. Use an existing workspace shortcut while holding Option to
 switch workspaces and dismiss the list. Release Option to dismiss it.

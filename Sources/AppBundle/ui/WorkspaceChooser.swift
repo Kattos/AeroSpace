@@ -80,7 +80,8 @@ final class WorkspaceChooser {
             cancel()
             return
         }
-        guard let pressedAt, ProcessInfo.processInfo.systemUptime - pressedAt >= 0.4 else { return }
+        let threshold = Double(TrayMenuModel.shared.workspaceChooser.holdThresholdMs) / 1000
+        guard let pressedAt, ProcessInfo.processInfo.systemUptime - pressedAt >= threshold else { return }
         self.pressedAt = nil
         panel.present()
     }

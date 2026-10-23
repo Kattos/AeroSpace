@@ -350,6 +350,11 @@ private let workspaceChooserParser: [String: any ParserProtocol<WorkspaceChooser
     "columns": Parser(\.columns, parseWorkspaceChooserColumns),
     "adaptive-columns": Parser(\.columns, { raw, backtrace in parseBool(raw, backtrace).map { $0 ? .auto : .single } }),
     "hide-empty-workspaces": Parser(\.hideEmptyWorkspaces, parseBool),
+    "hold-threshold-ms": Parser(\.holdThresholdMs, { raw, backtrace in
+        parseInt(raw, backtrace).flatMap { value in
+            value > 0 ? .success(value) : .failure(.init(backtrace, "hold-threshold-ms must be greater than zero"))
+        }
+    }),
 ]
 
 func parseWorkspaceChooser(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout ConfigParserContext) -> WorkspaceChooserSettings {

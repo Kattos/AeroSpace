@@ -1,0 +1,125 @@
+import AppKit
+import Common
+import SwiftUI
+
+@MainActor @ViewBuilder
+func experimentalMenu(viewModel: TrayMenuModel) -> some View {
+    Menu("Experimental") {
+        if viewModel.axPermissionStatus == .granted, let token: RunSessionGuard = .isServerEnabled {
+            let hint = autoPlaceShortcutHint()
+            Button(hint.map { "Auto Place (\($0))" } ?? "Auto Place") {
+                Task.startUnstructured {
+                    try await runLightSession(.menuBarButton, token) {
+                        let result = await AutoPlaceCommand(args: AutoPlaceCmdArgs(rawArgs: []))
+                            .run(.defaultEnv, .emptyStdin)
+                        if result.exitCode.rawValue != 0 {
+                            MessageModel.shared.message = Message(
+                                description: "Auto Place failed",
+                                body: result.stderr.isEmpty ? "Auto Place failed." : result.stderr.joined(separator: "\n"),
+                                containsWarnings: false,
+                            )
+                        }
+                    }
+                }
+            }
+            Button("Workspace Search") {
+                Task.startUnstructured {
+                    try await runLightSession(.menuBarButton, token) {
+                        let result = await WorkspaceChooserSearchCommand(args: WorkspaceChooserSearchCmdArgs(rawArgs: []))
+                            .run(.defaultEnv, .emptyStdin)
+                        if result.exitCode.rawValue != 0 {
+                            MessageModel.shared.message = Message(
+                                description: "Workspace Search failed",
+                                body: result.stderr.isEmpty ? "Workspace Search failed." : result.stderr.joined(separator: "\n"),
+                                containsWarnings: false,
+                            )
+                        }
+                    }
+                }
+            }
+            Divider()
+        }
+        Button("Help…") { ExperimentalHelpPanel.shared.present() }
+    }
+}
+
+@MainActor
+private func autoPlaceShortcutHint() -> String? {
+    let mode = activeMode ?? mainModeId
+    return config.modes[mode]?.bindings.values
+        .filter { $0.commands.flatten().contains { $0 is AutoPlaceCommand } }
+        .map(\.descriptionWithKeyNotation).sorted().first
+}
+
+@MainActor
+private final class ExperimentalHelpPanel: NSPanel {
+    static let shared = ExperimentalHelpPanel()
+
+    private init() {
+        super.init(contentRect: NSRect(x: 0, y: 0, width: 660, height: 650),
+                   styleMask: [.titled, .closable, .resizable, .utilityWindow, .nonactivatingPanel],
+                   backing: .buffered, defer: false)
+        title = "Experimental Help"
+        isReleasedWhenClosed = false
+        level = .floating
+        minSize = NSSize(width: 440, height: 300)
+        contentView = NSHostingView(rootView: ExperimentalHelpView())
+    }
+
+    func present() {
+        if !isVisible { center() }
+        makeKeyAndOrderFront(nil)
+    }
+}
+
+private struct ExperimentalHelpView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Experimental").font(.title2.bold())
+                Text("Local features in this fork. Configure them in your existing TOML file, then reload config. These options keep their current names; there is no experimental namespace.")
+                ForEach(experimentalHelpSections, id: \.title) { section in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(section.title).font(.headline)
+                        Text(verbatim: section.body)
+                    }
+                }
+                Text("Example").font(.headline)
+                Text("Merge these fields into existing tables. Do not repeat table headers. Option+Space is only an example: check your bindings and other apps for conflicts. No search shortcut is installed by default.")
+                Text(verbatim: experimentalHelpExample)
+                    .font(.system(size: 12, design: .monospaced))
+                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            }
+            .font(.system(size: 13)).lineSpacing(3)
+            .frame(maxWidth: 640, alignment: .leading).padding(24)
+        }
+        .textSelection(.enabled)
+    }
+}
+
+private let experimentalHelpSections: [(title: String, body: String)] = [
+    ("Workspace chooser", "Hold either Option key alone to see the chooser; release it to close. Use your existing workspace shortcuts to switch. The clicked tray workspace menu remains the classic list. Ghostty labels include cached window titles; other apps show app names. No screen recording permission is needed."),
+    ("[workspace-chooser]", "columns = \"auto\" (default) fits columns to the screen; \"fixed\" uses two balanced columns, or one for a single result; \"single\" uses one column.\nhide-empty-workspaces = false by default. When true, empty workspaces are hidden except the focused workspace.\nhold-threshold-ms = 400 by default; use a positive integer. Timing is checked every 50 ms.\nexclude-keys = [] by default. Use ordinary AeroSpace key notation; key mappings apply. Pressing one with Option suppresses the ordinary chooser until Option is released. A passive event tap may need Input Monitoring permission; without it, exclusions are best effort.\nshow-app-icons = false by default. Enable 16×16 application icons beside each label. Missing icons fall back to text. Settings also apply to search results."),
+    ("[workspace-chooser-colors]", "Map a literal part of a displayed label to a strict \"#RRGGBB\" color. Matching is case insensitive, not a regular expression. The first matching rule in source order colors the whole application/Ghostty label in bold. Full labels are matched before truncation. No rules means ordinary secondary text."),
+    ("Auto Place · [auto-place]", "Run Auto Place from this submenu or with aerospace auto-place. Map display-label substrings to workspace names (strings or integers). Matching is case insensitive and literal; the first rule in source order wins. Ghostty can match its title; other apps match their application names. Hidden, minimized and macOS native fullscreen windows are skipped. With no rules nothing is moved. This is manual only: it does not run callbacks or shell commands. If a current-mode binding contains auto-place, including a reload-config + auto-place sequence, its key notation appears beside the menu action. The hint adds no binding."),
+    ("Workspace Search", "Open this submenu action or run aerospace workspace-chooser-search. Search stays open after Option is released for normal typing and input methods. Names and existing full application/Ghostty labels match case-insensitive ordered characters; exact/prefix matches rank first and ties keep workspace order. Up/Down selects, Enter switches, Escape cancels; Enter during marked-text composition belongs to the input method. AeroSpace shortcuts pause while searching and restore on close. Focus loss, disable, sleep, session exit and a successful config reload close search. External global shortcuts can still intercept keys."),
+]
+
+private let experimentalHelpExample = """
+[workspace-chooser]
+columns = "auto"
+hide-empty-workspaces = false
+hold-threshold-ms = 400
+exclude-keys = []
+show-app-icons = false
+
+[workspace-chooser-colors]
+"project" = "#89B4FA"
+
+[auto-place]
+"project" = "D"
+
+[mode.main.binding]
+alt-space = "workspace-chooser-search"
+"""

@@ -286,6 +286,14 @@ struct ParseConfigResult {
         config.modes = modes
     }
 
+    // Key names are validated against the resolved key mapping, so this must run after keyMappingConfigRootKey
+    config.workspaceChooser.excludedKeyCodes = resolveExcludedKeyCodes(
+        config.workspaceChooser.excludedKeys,
+        config.keyMapping.resolve(),
+        .rootKey("workspace-chooser"),
+        &c,
+    )
+
     if config.configVersion <= ._1 {
         if rawTable.keys.contains(persistentWorkspacesKey) {
             c.errors += [.init(.rootKey(persistentWorkspacesKey), "This config option is only available since 'config-version = 2'")]
@@ -355,6 +363,8 @@ private let workspaceChooserParser: [String: any ParserProtocol<WorkspaceChooser
             value > 0 ? .success(value) : .failure(.init(backtrace, "hold-threshold-ms must be greater than zero"))
         }
     }),
+    // Resolved into key codes after 'key-mapping' is parsed
+    "exclude-keys": Parser(\.excludedKeys, parseArrayOfStrings),
 ]
 
 func parseWorkspaceChooser(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout ConfigParserContext) -> WorkspaceChooserSettings {
@@ -370,6 +380,25 @@ func parseWorkspaceChooserColumns(_ raw: OrderedJson, _ backtrace: ConfigBacktra
         WorkspaceChooserColumns(rawValue: value)
             .toResult(.init(backtrace, "Expected 'auto', 'fixed', or 'single'"))
     }
+}
+
+/// Resolves `workspace-chooser.exclude-keys` names through the same mapping that keybindings use, so presets and
+/// `key-notation-to-key-code` overrides apply. Rejects unknown names instead of silently ignoring them.
+func resolveExcludedKeyCodes(
+    _ names: [String],
+    _ mapping: [String: Key],
+    _ backtrace: ConfigBacktrace,
+    _ c: inout ConfigParserContext,
+) -> Set<UInt32> {
+    var result: Set<UInt32> = []
+    for (index, name) in names.enumerated() {
+        let backtrace = backtrace + .key("exclude-keys") + .index(index)
+        switch mapping[name] {
+            case let key?: result.insert(key.carbonKeyCode)
+            case nil: c.errors.append(.init(backtrace, "Unknown key \(name.singleQuoted)"))
+        }
+    }
+    return result
 }
 
 func parseWorkspaceChooserColors(_ raw: OrderedJson, _ backtrace: ConfigBacktrace, _ c: inout ConfigParserContext) -> [(pattern: String, rgb: UInt32)] {

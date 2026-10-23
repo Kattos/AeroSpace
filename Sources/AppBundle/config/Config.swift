@@ -74,6 +74,9 @@ struct WorkspaceChooserSettings: ConvenienceMutable, Equatable {
     var columns: WorkspaceChooserColumns = .auto
     var hideEmptyWorkspaces = false
     var holdThresholdMs = 400
+    /// Raw key notation from the config. Resolved into `excludedKeyCodes` once key mapping is known
+    var excludedKeys: [String] = []
+    var excludedKeyCodes: Set<UInt32> = []
 }
 
 enum WorkspaceChooserColumns: String {

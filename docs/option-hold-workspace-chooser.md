@@ -14,6 +14,35 @@ released and pressed again. The panel does not activate AeroSpace or capture
 keyboard shortcuts. The clicked menu bar menu continues to work as before.
 The chooser is unavailable while AeroSpace is disabled or Secure Input is active.
 
+## Keys that other shortcuts consume
+
+`exclude-keys` covers the case where another app's global shortcut consumes the
+key press before AeroSpace can see it. Because Carbon and third-party shortcuts
+can swallow the event, the chooser cannot rely on its normal event monitors for
+those keys.
+
+```toml
+[workspace-chooser]
+exclude-keys = ["s", "v"]
+```
+
+The default is an empty list, which disables the feature and leaves the chooser
+unchanged. Names are ordinary AeroSpace key notation and follow
+`key-mapping.preset` and `key-notation-to-key-code` overrides, exactly like
+keybindings. Unknown names and non-string values are configuration errors.
+
+While an Option key is held, pressing an excluded key cancels a pending timer or
+dismisses a visible chooser and suppresses the chooser until every Option key is
+released. Pressing an excluded key at the same time as Option is not treated as a
+fresh hold, so the chooser does not reappear mid-chord. Pressing an excluded key
+without Option does nothing.
+
+Observing these keys uses a passive, listen-only event tap; AeroSpace never
+consumes or rewrites the event. The tap needs Input Monitoring permission. When
+the permission is not granted the chooser keeps working normally and shows a
+diagnostic instead of failing. Whether an external tool's shortcut is observed
+before it acts is up to that tool, so a very quick chord may not be suppressed.
+
 ## Columns and empty workspaces
 
 These independent settings control the Option chooser only:

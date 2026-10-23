@@ -1,6 +1,7 @@
 import AppKit
 import Carbon
 import Combine
+import CoreGraphics
 import SwiftUI
 
 @MainActor
@@ -13,6 +14,15 @@ final class WorkspaceChooser {
     private var timer: Timer?
     private var optionDown = false
     private var pressedAt: TimeInterval?
+    private var settingsSubscription: AnyCancellable?
+    /// Carbon shortcuts (and a global NSEvent monitor) may consume keyDown before we see it, so excluded keys are
+    /// observed through a passive CGEventTap. Mirrored here to keep the tap callback a cheap set lookup.
+    private var excludedKeyCodes: Set<UInt32> = []
+    private var eventTap: CFMachPort?
+    private var eventTapSource: CFRunLoopSource?
+    /// An excluded key was pressed while Option was held: stay suppressed until every Option key is released.
+    private var suppressed = false
+    private var reportedMissingTap = false
 
     private init() {}
 
@@ -29,13 +39,120 @@ final class WorkspaceChooser {
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main,
         ) { _ in
-            MainActor.assumeIsolated { self.cancel() }
+            MainActor.assumeIsolated { self.resetState() }
         }
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willSleepNotification, object: nil, queue: .main,
         ) { _ in
-            MainActor.assumeIsolated { self.cancel() }
+            MainActor.assumeIsolated { self.resetState() }
         }
+        settingsSubscription = TrayMenuModel.shared.$workspaceChooser
+            .receive(on: RunLoop.main)
+            .sink { [weak self] settings in
+                MainActor.assumeIsolated { self?.updateExclusions(settings.excludedKeyCodes) }
+            }
+    }
+
+    /// Keeps the excluded key codes in sync with the published settings. Reload reaches this through the same
+    /// subscription, so exclusions update without duplicating monitors or restarting the app.
+    private func updateExclusions(_ keyCodes: Set<UInt32>) {
+        excludedKeyCodes = keyCodes
+        if keyCodes.isEmpty {
+            // Nothing to observe: release the tap instead of keeping a listener alive for no reason
+            removeEventTap()
+        } else {
+            installEventTap()
+        }
+    }
+
+    /// A passive listen-only tap sees keyDown before normal shortcut dispatch. It never consumes or rewrites events.
+    private func installEventTap() {
+        guard eventTap == nil else { return }
+        // Preflight without prompting: excluded keys are a best-effort refinement of a working chooser
+        guard CGPreflightListenEventAccess() else {
+            reportMissingEventTapOnce()
+            return
+        }
+        let mask: UInt64 = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
+        guard let tap = unsafe CGEvent.tapCreate(
+            tap: .cghidEventTap,
+            place: .headInsertEventTap,
+            options: .listenOnly,
+            eventsOfInterest: CGEventMask(mask),
+            callback: workspaceChooserTapCallback,
+            userInfo: nil,
+        ) else {
+            reportMissingEventTapOnce()
+            return
+        }
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            CFMachPortInvalidate(tap)
+            reportMissingEventTapOnce()
+            return
+        }
+        eventTap = tap
+        eventTapSource = source
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
+    private func removeEventTap() {
+        if let source = eventTapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
+        eventTapSource = nil
+        eventTap = nil
+    }
+
+    private func reportMissingEventTapOnce() {
+        guard !reportedMissingTap else { return }
+        reportedMissingTap = true
+        let msg = "workspace-chooser.exclude-keys can't observe keys: grant AeroSpace Input Monitoring permission. " +
+            "The chooser keeps working, but excluded keys may not take effect."
+        MessageModel.shared.message = Message(body: msg, containsWarnings: true)
+    }
+
+    /// Runs on the main run loop. Must stay cheap: no AX work, no config parsing, no event mutation.
+    fileprivate func handleTapEvent(_ type: CGEventType, keyCode: UInt32, optionDown: Bool) {
+        switch type {
+            case .tapDisabledByTimeout, .tapDisabledByUserInput:
+                // A slow callback or an explicit disable stops delivery; re-arm so exclusions keep working
+                if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
+            case .keyDown:
+                // Read the flags of this event rather than trusting the possibly stale `optionDown`
+                if optionDown, excludedKeyCodes.contains(keyCode) {
+                    suppressWhileOptionHeld()
+                }
+            case .flagsChanged:
+                // Both Option keys: suppression ends only once no Option remains down
+                if !optionDown {
+                    self.optionDown = false
+                    releaseSuppression()
+                }
+            default: break
+        }
+    }
+
+    private func suppressWhileOptionHeld() {
+        suppressed = true
+        cancel()
+    }
+
+    private func releaseSuppression() {
+        guard suppressed else { return }
+        suppressed = false
+        cancel()
+    }
+
+    /// Clears all transient state. Session resign and sleep can swallow the release events entirely.
+    private func resetState() {
+        cancel()
+        optionDown = false
+        suppressed = false
     }
 
     func cancel() {
@@ -56,10 +173,13 @@ final class WorkspaceChooser {
         optionDown = flags.contains(.option)
         guard flags == .option else {
             cancel()
+            // A real Option release ends an excluded-key suppression. Idempotent with the tap's own handling.
+            if !optionDown { suppressed = false }
             return
         }
         // Only a fresh Option press may arm the chooser, never the end of a chord.
-        guard !wasDown, event.keyCode == UInt16(kVK_Option) || event.keyCode == UInt16(kVK_RightOption),
+        // While suppressed, releasing a key that was pressed during the chord must not rearm.
+        guard !wasDown, !suppressed, event.keyCode == UInt16(kVK_Option) || event.keyCode == UInt16(kVK_RightOption),
               NSEvent.pressedMouseButtons == 0,
               TrayMenuModel.shared.isEnabled, !IsSecureEventInputEnabled()
         else { return }
@@ -80,11 +200,28 @@ final class WorkspaceChooser {
             cancel()
             return
         }
+        guard !suppressed else {
+            cancel()
+            return
+        }
         let threshold = Double(TrayMenuModel.shared.workspaceChooser.holdThresholdMs) / 1000
         guard let pressedAt, ProcessInfo.processInfo.systemUptime - pressedAt >= threshold else { return }
         self.pressedAt = nil
         panel.present()
     }
+}
+
+private func workspaceChooserTapCallback(
+    proxy _: CGEventTapProxy,
+    type: CGEventType,
+    event: CGEvent,
+    userInfo _: UnsafeMutableRawPointer?,
+) -> Unmanaged<CGEvent>? {
+    // Extract only Sendable primitives: CGEvent itself is not Sendable
+    let keyCode = UInt32(clamping: event.getIntegerValueField(.keyboardEventKeycode))
+    let optionDown = event.flags.contains(.maskAlternate)
+    MainActor.assumeIsolated { WorkspaceChooser.shared.handleTapEvent(type, keyCode: keyCode, optionDown: optionDown) }
+    return unsafe Unmanaged.passUnretained(event)
 }
 
 private final class WorkspaceChooserPanel: NSPanelHud {

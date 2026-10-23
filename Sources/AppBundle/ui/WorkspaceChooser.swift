@@ -222,8 +222,10 @@ final class WorkspaceChooser {
     }
 
     func openSearch() -> Bool {
-        cancel()
         guard TrayMenuModel.shared.isEnabled, !IsSecureEventInputEnabled() else { return false }
+        timer?.invalidate()
+        timer = nil
+        pressedAt = nil
         return panel.presentSearch()
     }
 
@@ -251,6 +253,7 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
     private(set) var isSearching = false
     private let searchField = NSSearchField()
     private var searchHost: NSHostingView<WorkspaceChooserView>?
+    private var searchFrame: NSRect?
     private var previousApp: NSRunningApplication?
     private var query = ""
     private var selectedName: String?
@@ -290,8 +293,17 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
     }
 
     func presentSearch() -> Bool {
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.screens.first
+        if isSearching { return makeFirstResponder(searchField) }
+        guard let screen = (isVisible ? presentationScreen : nil) ?? NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.screens.first
         else { return false }
+        let model = TrayMenuModel.shared
+        let ordinary = WorkspaceChooserLayout(workspaces: model.workspaces, settings: model.workspaceChooser, availableSize: screen.visibleFrame.size)
+        let origin = isVisible ? frame : NSRect(x: screen.visibleFrame.midX - ordinary.size.width / 2,
+                                              y: screen.visibleFrame.midY - ordinary.size.height / 2,
+                                              width: ordinary.size.width, height: ordinary.size.height)
+        let height = min(screen.visibleFrame.height - 48, ordinary.size.height + 56)
+        searchFrame = NSRect(x: origin.minX, y: max(screen.visibleFrame.minY + 24, origin.maxY - height),
+                             width: origin.width, height: height)
         presentationScreen = screen
         previousApp = NSWorkspace.shared.frontmostApplication
         query = ""
@@ -315,6 +327,7 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
         isSearching = false
         orderOut(nil)
         searchHost = nil
+        searchFrame = nil
         ignoresMouseEvents = true
         pauseHotkeysForChooserSearch(false)
         // A nonactivating panel normally returns key focus automatically; only reactivate if AeroSpace became active.
@@ -378,12 +391,12 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
         if isSearching {
             results = workspaceChooserSearch(workspaces: layout.workspaces, query: query)
             if !results.contains(where: { $0.name == selectedName }) { selectedName = results.first?.name }
-            layout = WorkspaceChooserLayout(searchResults: results, availableSize: screen.visibleFrame.size)
+            layout = WorkspaceChooserLayout(workspaces: results, settings: settings, availableSize: screen.visibleFrame.size, searching: true)
         }
-        let width = layout.size.width
-        let height = layout.size.height
+        let width = searchFrame?.width ?? layout.size.width
+        let height = searchFrame?.height ?? layout.size.height
         let root = WorkspaceChooserView(model: TrayMenuModel.shared, layout: layout, isSearching: isSearching, selectedName: selectedName)
-        let view = searchHost ?? NSHostingView(rootView: root)
+        let view = searchHost ?? (contentView as? NSHostingView<WorkspaceChooserView>) ?? NSHostingView(rootView: root)
         view.rootView = root
         view.frame = NSRect(x: 0, y: 0, width: width, height: height)
         if isSearching {
@@ -394,11 +407,11 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
                 container.addSubview(searchField)
                 contentView = container
             }
-            searchField.frame = NSRect(x: 22, y: height - 52, width: max(1, width - 44), height: 28)
+            searchField.frame = NSRect(x: 22, y: 38, width: max(1, width - 44), height: 28)
         } else {
             contentView = view
         }
-        setFrame(NSRect(
+        setFrame(searchFrame ?? NSRect(
             x: screen.visibleFrame.midX - width / 2,
             y: screen.visibleFrame.midY - height / 2,
             width: width, height: height,
@@ -412,20 +425,13 @@ struct WorkspaceChooserLayout {
     let columnCount: Int
     let size: CGSize
 
-    init(searchResults: [WorkspaceViewModel], availableSize: CGSize) {
-        workspaces = searchResults
-        rowsPerColumn = max(1, searchResults.count)
-        columnCount = 1
-        size = CGSize(width: min(480, max(1, availableSize.width - 32)),
-                      height: min(max(1, availableSize.height - 48), CGFloat(rowsPerColumn) * 36 + 124))
-    }
-
-    init(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings, availableSize: CGSize) {
+    init(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings, availableSize: CGSize, searching: Bool = false) {
         self.workspaces = workspaces.filter { !settings.hideEmptyWorkspaces || !$0.isEffectivelyEmpty || $0.isFocused }
         let count = max(1, self.workspaces.count)
         let maxWidth = max(1, availableSize.width - 32)
         let maxHeight = max(1, availableSize.height - 48)
-        let fittingRows = max(1, Int(max(0, maxHeight - 88) / 36))
+        let overhead: CGFloat = searching ? 144 : 88
+        let fittingRows = max(1, Int(max(0, maxHeight - overhead) / 36))
         let fittingColumns = max(1, Int(max(0, maxWidth - 24 + 12) / 252))
         switch settings.columns {
             case .auto:
@@ -440,7 +446,7 @@ struct WorkspaceChooserLayout {
         }
         size = CGSize(
             width: min(maxWidth, CGFloat(columnCount) * 336 + CGFloat(columnCount - 1) * 12 + 24),
-            height: min(maxHeight, CGFloat(rowsPerColumn) * 36 + 88),
+            height: min(maxHeight, CGFloat(rowsPerColumn) * 36 + overhead),
         )
     }
 
@@ -457,15 +463,12 @@ private struct WorkspaceChooserView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if isSearching {
-                Color.clear.frame(height: 44)
-            } else { HStack {
+            HStack {
                 Text("Workspaces").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Text("⌥").font(.system(size: 17, weight: .medium)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 10)
-            }
             ScrollViewReader { proxy in
                 ScrollView {
                     HStack(alignment: .top, spacing: 12) {
@@ -512,8 +515,13 @@ private struct WorkspaceChooserView: View {
                 .onAppear { proxy.scrollTo(isSearching ? selectedName : layout.workspaces.first(where: \.isFocused)?.name, anchor: .center) }
                 .onChange(of: selectedName) { name in proxy.scrollTo(name, anchor: .center) }
             }
+            if isSearching {
+                Color.clear.frame(height: 32)
+                    .padding(.top, 4)
+            }
             Text(isSearching ? "↑ ↓ Navigate · Return Switch · Esc Cancel" : "Use your workspace shortcut to switch")
                 .font(.system(size: 11))
+                .frame(height: isSearching ? 14 : nil)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
         }

@@ -25,7 +25,9 @@ Matching uses case-insensitive ordered characters from workspace names and the
 existing application labels, including cached Ghostty titles. Exact matches rank
 first, then prefixes, then subsequences with fewer leading/skipped characters.
 Ties retain workspace order. An empty query preserves ordinary workspace order
-and the existing empty-workspace filter. Results use one screen-bounded column.
+and the existing empty-workspace filter. The input expands below the same
+screen-bounded grid using the configured columns. Search keeps its entry width
+and position while filtering, including when no results match.
 
 No shortcut is installed by default. For example:
 

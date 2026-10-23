@@ -30,7 +30,9 @@ AeroSpace bindings. Other applications may still register it globally.
 Search stays open when Option is released. Type normally in the native search
 field, use Up/Down to select, Return to switch, and Escape to cancel. Input method
 composition owns Return until committed. The field and editor survive title and
-workspace updates. Results use a single column and existing entry styling; no
+workspace updates. The input expands below the existing grid, preserving the
+configured columns and entry styling. Search keeps its entry width and position
+while filtering, with a 16-point gap above the field; no
 matches shows “No matching workspaces”. Empty queries preserve ordinary workspace
 order and `hide-empty-workspaces`. Matching normalizes case and whitespace and
 uses ordered subsequences of full workspace names and cached app/Ghostty labels.

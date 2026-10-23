@@ -1,0 +1,65 @@
+= aerospace-restart(1)
+include::util/man-attributes.adoc[]
+:manname: aerospace-restart
+// tag::purpose[]
+:manpurpose: Restart AeroSpace.app
+// end::purpose[]
+
+// =========================================================== Synopsis
+== Synopsis
+[verse]
+// tag::synopsis[]
+aerospace restart [-h|--help]
+
+// end::synopsis[]
+
+// =========================================================== Description
+== Description
+
+// tag::body[]
+{manpurpose}
+
+The command answers first, then quits the currently running AeroSpace.app and starts the same bundle again.
+It never launches a different application or a different build product, and it doesn't use the
+`aerospace` CLI from `PATH`. The bundle must be a running `.app`; a bare debug executable reports an error instead.
+
+After the new instance has loaded the config and registered windows, it runs `command-after-restart`
+once. The key uses exactly the same syntax as
+xref:guide.adoc#after-startup-command[`after-startup-command`]: a TOML array of AeroSpace commands,
+validated at config load time, with no shell evaluation.
+
+[source,toml]
+----
+command-after-restart = ['auto-place']
+----
+
+The default is an empty array, so a restart places nothing unless you configure it. Entries run in
+order, each one a normal AeroSpace command with the usual validation; a failing entry surfaces the
+same diagnostics as other config-driven commands. Nothing else is replayed:
+`after-startup-command` runs on every start anyway, and `on-window-detected` callbacks aren't
+re-run for already existing windows.
+
+IMPORTANT: Window layout is not preserved across a restart. Windows are centered before quitting,
+so only commands in `command-after-restart` (for example `auto-place`) return windows to their
+configured workspace. Windows without a matching rule may stay on the focused workspace or reflow.
+
+A restart request is rejected while another one is pending, and the relaunched instance is not
+started if the old process doesn't exit in time.
+
+// end::body[]
+
+// =========================================================== Options
+include::util/conditional-options-header.adoc[]
+
+-h, --help:: Print help
+
+// =========================================================== Exit code
+include::util/conditional-exit-code-header.adoc[]
+
+`0` - restart was scheduled and the CLI response was delivered
++
+`2` - restart is unavailable: not an app bundle, read-only mode, a restart is already pending,
+or the helper couldn't start
+
+// =========================================================== Footer
+include::util/man-footer.adoc[]

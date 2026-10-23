@@ -38,6 +38,21 @@ func experimentalMenu(viewModel: TrayMenuModel) -> some View {
                 }
             }
             Divider()
+            Button("Restart") {
+                Task.startUnstructured {
+                    try await runLightSession(.menuBarButton, token) {
+                        let result = await RestartCommand(args: RestartCmdArgs(rawArgs: []))
+                            .run(.defaultEnv, .emptyStdin)
+                        if result.exitCode.rawValue != 0 {
+                            MessageModel.shared.message = Message(
+                                description: "Restart failed",
+                                body: result.stderr.isEmpty ? "Restart failed." : result.stderr.joined(separator: "\n"),
+                                containsWarnings: false,
+                            )
+                        }
+                    }
+                }
+            }
         }
         Button("Help…") { ExperimentalHelpPanel.shared.present() }
     }
@@ -100,10 +115,12 @@ private struct ExperimentalHelpView: View {
 
 private let experimentalHelpSections: [(title: String, body: String)] = [
     ("Workspace chooser", "Hold either Option key alone to see the chooser; release it to close. Use your existing workspace shortcuts to switch. The clicked tray workspace menu remains the classic list. Ghostty labels include cached window titles; other apps show app names. No screen recording permission is needed."),
-    ("[workspace-chooser]", "columns = \"auto\" (default) fits columns to the screen; \"fixed\" uses two balanced columns, or one for a single result; \"single\" uses one column.\nhide-empty-workspaces = false by default. When true, empty workspaces are hidden except the focused workspace.\nhold-threshold-ms = 400 by default; use a positive integer. Timing is checked every 50 ms.\nexclude-keys = [] by default. Use ordinary AeroSpace key notation; key mappings apply. Pressing one with Option suppresses the ordinary chooser until Option is released. A passive event tap may need Input Monitoring permission; without it, exclusions are best effort.\nshow-app-icons = false by default. Enable 16×16 application icons beside each label. Missing icons fall back to text. Settings also apply to search results."),
+    ("[workspace-chooser]", "columns = \"auto\" (default) fits columns to the screen; \"fixed\" uses two balanced columns, or one for a single result; \"single\" uses one column.\nsearch-style = \"default\" by default. \"default\" expands the input below the screen-fitted grid; \"legacy\" uses the earlier top input with a single result column. Only these two exact strings are accepted.\nhide-empty-workspaces = false by default. When true, empty workspaces are hidden except the focused workspace.\nhold-threshold-ms = 400 by default; use a positive integer. Timing is checked every 50 ms.\nexclude-keys = [] by default. Use ordinary AeroSpace key notation; key mappings apply. Pressing one with Option suppresses the ordinary chooser until Option is released. A passive event tap may need Input Monitoring permission; without it, exclusions are best effort.\nshow-app-icons = false by default. Enable 16×16 application icons beside each label. Missing icons fall back to text. Settings also apply to search results."),
     ("[workspace-chooser-colors]", "Map a literal part of a displayed label to a strict \"#RRGGBB\" color. Matching is case insensitive, not a regular expression. The first matching rule in source order colors the whole application/Ghostty label in bold. Full labels are matched before truncation. No rules means ordinary secondary text."),
     ("Auto Place · [auto-place]", "Run Auto Place from this submenu or with aerospace auto-place. Map display-label substrings to workspace names (strings or integers). Matching is case insensitive and literal; the first rule in source order wins. Ghostty can match its title; other apps match their application names. Hidden, minimized and macOS native fullscreen windows are skipped. With no rules nothing is moved. This is manual only: it does not run callbacks or shell commands. If a current-mode binding contains auto-place, including a reload-config + auto-place sequence, its key notation appears beside the menu action. The hint adds no binding."),
     ("Workspace Search", "Open this submenu action or run aerospace workspace-chooser-search. Search stays open after Option is released for normal typing and input methods. Names and existing full application/Ghostty labels match case-insensitive ordered characters; exact/prefix matches rank first and ties keep workspace order. Up/Down selects, Enter switches, Escape cancels; Enter during marked-text composition belongs to the input method. AeroSpace shortcuts pause while searching and restore on close. Focus loss, disable, sleep, session exit and a successful config reload close search. External global shortcuts can still intercept keys."),
+    ("command-after-restart", "Top-level key, empty by default. Same syntax and native validation as after-startup-command: a TOML array of AeroSpace commands, no shell evaluation. The commands run in order, once, only in the instance launched by the Restart action or aerospace restart, after the config is loaded and existing windows are registered. Ordinary launches never run them. Example: command-after-restart = ['auto-place']. A failing command surfaces the usual diagnostics."),
+    ("Restart", "Run this submenu action or aerospace restart. The command answers first, then quits AeroSpace and reopens the same running app bundle (not another build or the CLI on PATH). After the new instance has loaded the config and registered windows, it runs command-after-restart once, if configured; nothing is placed by default. Window layout is not preserved: windows are centered before quitting, so only commands you list there (for example auto-place) restore placement; unmatched windows may stay on the focused workspace or reflow. after-startup-command runs normally and on-window-detected callbacks are not re-run. There is no default shortcut and no layout guarantee. Restart fails instead of launching anything when AeroSpace isn't running from an .app bundle, in read-only mode, or while a restart is already pending."),
 ]
 
 private let experimentalHelpExample = """
@@ -119,6 +136,8 @@ show-app-icons = false
 
 [auto-place]
 "project" = "D"
+
+command-after-restart = ['auto-place']
 
 [mode.main.binding]
 alt-space = "workspace-chooser-search"

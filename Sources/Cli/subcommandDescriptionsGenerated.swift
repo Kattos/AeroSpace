@@ -35,6 +35,7 @@ let subcommandDescriptions = [
     ["  move", "Move the focused window in the given direction"],
     ["  reload-config", "Reload currently active config"],
     ["  resize", "Resize the focused window"],
+    ["  restart", "Restart AeroSpace.app"],
     ["  run-callback", "Run AeroSpace config callbacks on demand"],
     ["  split", "Split focused window"],
     ["  subscribe", "Subscribe to AeroSpace events and receive notifications via socket"],

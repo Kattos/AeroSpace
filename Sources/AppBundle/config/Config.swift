@@ -64,6 +64,7 @@ struct Config: ConvenienceMutable {
     var onWindowDetected: [WindowDetectedCallback] = []
     var autoPlace: [AutoPlaceRule] = []
     var onModeChanged: Shell<any Command> = .empty
+    var commandAfterRestart: Shell<any Command> = .empty
 }
 
 struct FocusFollowsMouse: ConvenienceMutable {

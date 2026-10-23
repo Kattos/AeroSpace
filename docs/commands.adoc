@@ -245,6 +245,13 @@ include::aerospace-resize.adoc[tags=synopsis]
 include::aerospace-resize.adoc[tags=purpose]
 include::aerospace-resize.adoc[tags=body]
 
+== restart
+----
+include::aerospace-restart.adoc[tags=synopsis]
+----
+include::aerospace-restart.adoc[tags=purpose]
+include::aerospace-restart.adoc[tags=body]
+
 == run-callback
 ----
 include::aerospace-run-callback.adoc[tags=synopsis]

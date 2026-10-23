@@ -77,6 +77,8 @@ aerospace -h;
 
     | resize [--window-id <window_id>] (smart|smart-opposite|width|height) [+|-]<number> [--window-id <window_id>]
 
+    | restart
+
     | run-callback [--for-every-window|--window-id <window_id>]... on-window-detected [--for-every-window|--window-id <window_id>]...
     | run-callback (on-focus-changed|on-focused-monitor-changed)
 

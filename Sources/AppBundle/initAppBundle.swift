@@ -31,6 +31,19 @@ import Foundation
         try await runLightSession(.startup, .forceRun) {
             smartLayoutAtStartup()
             _ = await config.afterStartupCommand.run(.defaultEnv, .emptyStdin)
+            // Restart relaunches through LaunchServices; beforeTermination centers every window, so the user's
+            // configured commands are what restore the intended placement. Runs only on a restart-triggered launch.
+            if serverArgs.afterRestart {
+                let result = await config.commandAfterRestart.run(.defaultEnv, .emptyStdin)
+                if result.exitCode.rawValue != 0 {
+                    MessageModel.shared.message = Message(
+                        description: "command-after-restart failed",
+                        body: (result.stdout + result.stderr).joined(separator: "\n").takeIf { !$0.isEmpty }
+                            ?? "command-after-restart failed.",
+                        containsWarnings: false,
+                    )
+                }
+            }
         }
     }
 }
@@ -61,6 +74,7 @@ var isStartup: Bool { refreshSessionEvent?.isStartup == true }
 struct ServerArgs: Sendable {
     var configLocation: String? = nil
     var isReadOnly: Bool = false
+    var afterRestart: Bool = false
 }
 
 private let serverHelp = """
@@ -73,6 +87,9 @@ private let serverHelp = """
                               and ${XDG_CONFIG_HOME}/aerospace/aerospace.toml
       --read-only             Disable window management.
                               Useful if you want to use only debug-windows or other query commands.
+      --after-restart
+                              Internal: run 'command-after-restart' once after startup.
+                              Used by 'aerospace restart'.
     """
 
 nonisolated(unsafe) private var _serverArgs = ServerArgs()
@@ -97,6 +114,8 @@ private func initServerArgs() {
                 index += 1
             case "--read-only": // todo rename to '--disabled' and unite with disabled feature
                 unsafe _serverArgs.isReadOnly = true
+            case "--after-restart":
+                unsafe _serverArgs.afterRestart = true
             case "-NSDocumentRevisionsDebugMode" where isDebug:
                 // Skip Xcode CLI args.
                 // Usually it's '-NSDocumentRevisionsDebugMode NO'/'-NSDocumentRevisionsDebugMode YES'

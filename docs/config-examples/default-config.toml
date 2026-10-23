@@ -10,6 +10,10 @@ config-version = 2
 # Available commands : https://nikitabobko.github.io/AeroSpace/commands
 after-startup-command = []
 
+# Commands that run once after a restart, in order, in the instance that 'aerospace restart' started.
+# Same syntax as after-startup-command. Empty by default. Example: ['auto-place']
+command-after-restart = []
+
 # Start AeroSpace at login
 start-at-login = false
 

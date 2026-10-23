@@ -84,6 +84,7 @@ func runLightSession<T>(
             focusAfter?.nativeFocus() // syncFocusToMacOs
         }
         if !event.isFocusFollowsMouse { scheduleCancellableCompleteRefreshSession(event) }
+        terminateIfRestartIsPending()
         return result
     }
 }

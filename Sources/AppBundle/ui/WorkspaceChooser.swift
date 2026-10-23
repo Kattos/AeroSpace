@@ -417,7 +417,7 @@ struct WorkspaceChooserLayout {
         rowsPerColumn = max(1, searchResults.count)
         columnCount = 1
         size = CGSize(width: min(480, max(1, availableSize.width - 32)),
-                      height: min(max(1, availableSize.height - 48), CGFloat(rowsPerColumn) * 36 + 110))
+                      height: min(max(1, availableSize.height - 48), CGFloat(rowsPerColumn) * 36 + 124))
     }
 
     init(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings, availableSize: CGSize) {
@@ -458,7 +458,7 @@ private struct WorkspaceChooserView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if isSearching {
-                Color.clear.frame(height: 30)
+                Color.clear.frame(height: 44)
             } else { HStack {
                 Text("Workspaces").font(.system(size: 13, weight: .semibold))
                 Spacer()

@@ -73,6 +73,7 @@ struct FocusFollowsMouse: ConvenienceMutable {
 struct WorkspaceChooserSettings: ConvenienceMutable, Equatable {
     var columns: WorkspaceChooserColumns = .auto
     var hideEmptyWorkspaces = false
+    var showAppIcons = false
     var holdThresholdMs = 400
     /// Raw key notation from the config. Resolved into `excludedKeyCodes` once key mapping is known
     var excludedKeys: [String] = []

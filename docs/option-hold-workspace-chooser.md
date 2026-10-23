@@ -134,6 +134,35 @@ large workspace counts can also exceed the adaptive layout's readable capacity;
 all entries remain in the scroll view rather than being dropped. Adaptive columns
 do not guarantee that arbitrary workspace counts fit simultaneously.
 
+## Application icons
+
+Application icons are optional and disabled by default:
+
+```toml
+[workspace-chooser]
+show-app-icons = true
+```
+
+`show-app-icons` accepts only a boolean. Reloading settings applies it to both
+the ordinary chooser and persistent search (configuration reload closes search).
+Each application label, including individual Ghostty titles and its overflow
+label, can show the running application's 16-point icon. Missing or invalid
+icons leave the full text intact. Icons come from macOS application metadata;
+no new permission or window title fetching is needed. The cache is keyed by
+process and application identity, and stale entries are pruned on icon lookup.
+
+Icons are inline images in the same single-line SwiftUI text, so the summary
+keeps tail truncation within the existing row width and 34-point height. Colors
+and bold text still match each complete label, including commas and CJK titles.
+Accessibility exposes the complete plain summary. Workspace names, focus
+indicators, fuzzy matching and the native menu are unchanged. Turning the setting
+off uses the original text rendering and performs no icon lookup.
+
+The separate optimized package is `.build/app-icons/AeroSpace-Release.app`, with
+CLI `.build/app-icons/aerospace`, based on the search package's metadata/resources.
+It is ad hoc signed; previous packages are preserved. No application was launched
+for this build, so actual icon baseline, truncation and IME/focus remain unverified.
+
 ## Entry text colors
 
 Add one optional table to your `aerospace.toml` to color individual application or

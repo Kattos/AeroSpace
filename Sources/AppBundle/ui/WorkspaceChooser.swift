@@ -484,11 +484,18 @@ private struct WorkspaceChooserView: View {
                                             .lineLimit(1).truncationMode(.tail)
                                             .layoutPriority(1)
                                         if !workspace.suffix.isEmpty {
+                                            if model.workspaceChooser.showAppIcons, !workspace.appEntries.isEmpty {
+                                                workspaceChooserIconSummary(workspace.appEntries, model: model)
+                                                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                                                    .lineLimit(1).truncationMode(.tail)
+                                                    .accessibilityLabel(workspace.appLabels.joined(separator: ", "))
+                                            } else {
                                             Text(workspace.appLabels.isEmpty
                                                  ? AttributedString(String(workspace.suffix.dropFirst(3)))
                                                  : workspaceChooserSummary(workspace.appLabels, colors: model.workspaceChooserColors))
                                                 .font(.system(size: 12)).foregroundStyle(.secondary)
                                                 .lineLimit(1).truncationMode(.tail)
+                                            }
                                         }
                                         Spacer(minLength: 0)
                                     }
@@ -514,6 +521,19 @@ private struct WorkspaceChooserView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.primary.opacity(0.08)))
     }
+}
+
+@MainActor
+private func workspaceChooserIconSummary(_ entries: [WorkspaceAppEntry], model: TrayMenuModel) -> Text {
+    var summary = Text("")
+    for (index, entry) in entries.enumerated() {
+        if index > 0 { summary = summary + Text(", ") }
+        if let icon = model.chooserIcon(pid: entry.pid) {
+            summary = summary + Text(Image(nsImage: icon)).baselineOffset(-3) + Text(" ")
+        }
+        summary = summary + Text(workspaceChooserSummary([entry.label], colors: model.workspaceChooserColors))
+    }
+    return summary
 }
 
 func workspaceChooserSummary(_ labels: [String], colors: [(pattern: String, rgb: UInt32)]) -> AttributedString {

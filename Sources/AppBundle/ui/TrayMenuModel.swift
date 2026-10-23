@@ -24,6 +24,20 @@ public final class TrayMenuModel: ObservableObject {
     @MainActor private var titleGeneration = 0
     @MainActor private var trackedMenu: NSMenu?
     @MainActor private var menuObservers: [any NSObjectProtocol] = []
+    @MainActor private var chooserIcons: [Int32: (identity: ObjectIdentifier, image: NSImage?)] = [:]
+
+    @MainActor func chooserIcon(pid: Int32?) -> NSImage? {
+        chooserIcons = chooserIcons.filter { pid, entry in
+            MacApp.allAppsMap[pid].map { ObjectIdentifier($0) == entry.identity } ?? false
+        }
+        guard let pid, let app = MacApp.allAppsMap[pid] else { return nil }
+        if let entry = chooserIcons[pid] { return entry.image }
+        let candidate = app.nsApp.icon?.copy() as? NSImage
+        let image = candidate?.isValid == true ? candidate : nil
+        image?.size = NSSize(width: 16, height: 16)
+        chooserIcons[pid] = (ObjectIdentifier(app), image)
+        return image
+    }
 
     @MainActor func observeWorkspaceMenu() {
         guard menuObservers.isEmpty else { return }
@@ -97,7 +111,7 @@ public final class TrayMenuModel: ObservableObject {
         }
     }
 
-    @MainActor func workspaceSummary(_ workspace: Workspace) -> (menu: String, labels: [String]) {
+    @MainActor func workspaceSummary(_ workspace: Workspace) -> (menu: String, labels: [String], entries: [WorkspaceAppEntry]) {
         ghosttyTitles = ghosttyTitles.filter { MacWindow.allWindowsMap[$0.key] === $0.value.window }
         let windows = workspace.allLeafWindowsRecursive
         let otherApps = windows.filter { $0.app.rawAppBundleId != "com.mitchellh.ghostty" }
@@ -107,6 +121,9 @@ public final class TrayMenuModel: ObservableObject {
         let appSummary = otherApps.joinTruncating(separator: ", ", length: 25)
         var menuLabels = appSummary.isEmpty ? [] : [appSummary]
         var labels = otherApps
+        var entries = otherApps.map { name in
+            WorkspaceAppEntry(label: name, pid: windows.filter { $0.app.name == name }.map { $0.app.pid }.min())
+        }
         for (index, window) in ghostty.prefix(3).enumerated() {
             let appName = window.app.name?.takeIf { !$0.isEmpty } ?? "Ghostty"
             let title = ghosttyTitles[window.windowId]?.title ?? ""
@@ -114,13 +131,15 @@ public final class TrayMenuModel: ObservableObject {
             let text = ghostty.count > 1 ? "[\(index + 1)] \(label)" : label
             menuLabels.append(text)
             labels.append(text)
+            entries.append(WorkspaceAppEntry(label: text, pid: window.app.pid))
         }
         if ghostty.count > 3 {
             let text = "+\(ghostty.count - 3) more Ghostty windows"
             menuLabels.append(text)
             labels.append(text)
+            entries.append(WorkspaceAppEntry(label: text, pid: ghostty.first?.app.pid))
         }
-        return (menuLabels.joined(separator: ", "), labels)
+        return (menuLabels.joined(separator: ", "), labels, entries)
     }
 }
 
@@ -204,6 +223,7 @@ enum AxPermissionStatus: Equatable {
             isEffectivelyEmpty: $0.isEffectivelyEmpty,
             isVisible: $0.isVisible,
             hasFullscreenWindows: hasFullscreenWindows,
+            appEntries: summary.entries,
         )
     }
 }
@@ -216,6 +236,12 @@ struct WorkspaceViewModel: Hashable {
     let isEffectivelyEmpty: Bool
     let isVisible: Bool
     let hasFullscreenWindows: Bool
+    var appEntries: [WorkspaceAppEntry] = []
+}
+
+struct WorkspaceAppEntry: Hashable {
+    let label: String
+    let pid: Int32?
 }
 
 enum TrayItemType: String, Hashable {

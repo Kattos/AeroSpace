@@ -46,5 +46,6 @@ let subcommandDescriptions = [
     ["  true", "Return true value"],
     ["  volume", "Manipulate volume"],
     ["  workspace-back-and-forth", "Switch between the focused workspace and previously focused workspace back and forth"],
+    ["  workspace-chooser-search", "Open persistent workspace search"],
     ["  workspace", "Focus the specified workspace"],
 ]

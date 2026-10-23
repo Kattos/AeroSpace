@@ -323,6 +323,13 @@ include::aerospace-workspace.adoc[tags=synopsis]
 include::aerospace-workspace.adoc[tags=purpose]
 include::aerospace-workspace.adoc[tags=body]
 
+== workspace-chooser-search
+
+include::aerospace-workspace-chooser-search.adoc[tags=synopsis]
+
+include::aerospace-workspace-chooser-search.adoc[tags=purpose]
+include::aerospace-workspace-chooser-search.adoc[tags=body]
+
 == workspace-back-and-forth
 ----
 include::aerospace-workspace-back-and-forth.adoc[tags=synopsis]

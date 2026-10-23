@@ -49,6 +49,7 @@ struct ReloadConfigResult {
         }
     }
     if parseResult.allowReloadConfig && !args.dryRun {
+        WorkspaceChooser.shared.cancelSearch()
         TrayMenuModel.shared.lastReloadConfigContainedWarnings = containsWarnings
         resetHotKeys()
         config = parseResult.config

@@ -4,6 +4,15 @@ import Foundation
 import HotKey
 
 @MainActor private var hotkeys: [String: HotKey] = [:]
+@MainActor private var chooserSearchPausesHotkeys = false
+
+@MainActor func pauseHotkeysForChooserSearch(_ paused: Bool) {
+    chooserSearchPausesHotkeys = paused
+    let bindings = activeMode.flatMap { config.modes[$0] }?.bindings ?? [:]
+    for (binding, key) in hotkeys {
+        key.isEnabled = !paused && bindings.keys.contains(binding)
+    }
+}
 
 @MainActor func resetHotKeys() {
     // Explicitly unregister all hotkeys. We cannot always rely on destruction of the HotKey object to trigger
@@ -31,6 +40,7 @@ extension HotKey {
     for binding in targetBindings.values where !hotkeys.keys.contains(binding.descriptionWithKeyCode) {
         hotkeys[binding.descriptionWithKeyCode] = HotKey(key: binding.keyCode, modifiers: binding.modifiers, keyDownHandler: {
             Task.startUnstructured {
+                guard !chooserSearchPausesHotkeys else { return }
                 WorkspaceChooser.shared.cancel()
                 if let activeMode {
                     broadcastEvent(.bindingTriggered(
@@ -46,7 +56,7 @@ extension HotKey {
         })
     }
     for (binding, key) in hotkeys {
-        key.isEnabled = targetBindings.keys.contains(binding)
+        key.isEnabled = !chooserSearchPausesHotkeys && targetBindings.keys.contains(binding)
     }
     let oldMode = activeMode
     activeMode = targetMode

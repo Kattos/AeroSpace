@@ -1,0 +1,54 @@
+= aerospace-workspace-chooser-search(1)
+include::util/man-attributes.adoc[]
+:manname: aerospace-workspace-chooser-search
+// tag::purpose[]
+:manpurpose: Open persistent workspace search
+// end::purpose[]
+
+== Synopsis
+[verse]
+// tag::synopsis[]
+aerospace workspace-chooser-search [-h|--help]
+// end::synopsis[]
+
+== Description
+// tag::body[]
+{manpurpose}
+
+Opens the workspace chooser with a focused native search field. Releasing Option
+keeps search open, so ordinary typing and input methods can be used.
+Up and Down select a result; Return switches to it; Escape cancels.
+Return during input method composition is left to the input method.
+Losing keyboard focus, disabling AeroSpace, sleep or session resignation closes search.
+
+Matching uses case-insensitive ordered characters from workspace names and the
+existing application labels, including cached Ghostty titles. Exact matches rank
+first, then prefixes, then subsequences with fewer leading/skipped characters.
+Ties retain workspace order. An empty query preserves ordinary workspace order
+and the existing empty-workspace filter. Results use one screen-bounded column.
+
+No shortcut is installed by default. For example:
+
+[source,toml]
+----
+[mode.main.binding]
+alt-space = 'workspace-chooser-search'
+----
+
+AeroSpace's own Carbon shortcuts are paused while search owns keyboard focus and
+restored for the current mode when it closes. Other applications' global shortcuts
+can still intercept keys. Search uses a temporary key nonactivating panel, without
+new permissions or activating AeroSpace. Cancel returns keyboard focus to the
+previous application; changing focus deliberately does not reactivate it.
+Existing asynchronous title fetching is shared with the normal chooser.
+// end::body[]
+
+include::util/conditional-options-header.adoc[]
+-h, --help:: Print help
+
+include::util/conditional-exit-code-header.adoc[]
+`0` - search opened (workspace selection happens afterward)
++
+`1` - search could not acquire keyboard focus or is unavailable
+
+include::util/man-footer.adoc[]

@@ -1,6 +1,7 @@
 import AppKit
 import Carbon
 import Combine
+import Common
 import CoreGraphics
 import SwiftUI
 
@@ -15,6 +16,7 @@ final class WorkspaceChooser {
     private var optionDown = false
     private var pressedAt: TimeInterval?
     private var settingsSubscription: AnyCancellable?
+    private var enabledSubscription: AnyCancellable?
     /// Carbon shortcuts (and a global NSEvent monitor) may consume keyDown before we see it, so excluded keys are
     /// observed through a passive CGEventTap. Mirrored here to keep the tap callback a cheap set lookup.
     private var excludedKeyCodes: Set<UInt32> = []
@@ -51,6 +53,9 @@ final class WorkspaceChooser {
             .sink { [weak self] settings in
                 MainActor.assumeIsolated { self?.updateExclusions(settings.excludedKeyCodes) }
             }
+        enabledSubscription = TrayMenuModel.shared.$isEnabled.sink { [weak self] enabled in
+            if !enabled { self?.cancel() }
+        }
     }
 
     /// Keeps the excluded key codes in sync with the published settings. Reload reaches this through the same
@@ -118,6 +123,7 @@ final class WorkspaceChooser {
 
     /// Runs on the main run loop. Must stay cheap: no AX work, no config parsing, no event mutation.
     fileprivate func handleTapEvent(_ type: CGEventType, keyCode: UInt32, optionDown: Bool) {
+        guard !panel.isSearching else { return }
         switch type {
             case .tapDisabledByTimeout, .tapDisabledByUserInput:
                 // A slow callback or an explicit disable stops delivery; re-arm so exclusions keep working
@@ -159,11 +165,16 @@ final class WorkspaceChooser {
         timer?.invalidate()
         timer = nil
         pressedAt = nil
+        panel.dismissSearch()
         panel.orderOut(nil)
         TrayMenuModel.shared.hideWorkspaceTitles(.chooser)
     }
 
     private func handle(_ event: NSEvent) {
+        if panel.isSearching {
+            optionDown = event.modifierFlags.contains(.option)
+            return
+        }
         guard event.type == .flagsChanged else {
             cancel()
             return
@@ -209,6 +220,16 @@ final class WorkspaceChooser {
         self.pressedAt = nil
         panel.present()
     }
+
+    func openSearch() -> Bool {
+        cancel()
+        guard TrayMenuModel.shared.isEnabled, !IsSecureEventInputEnabled() else { return false }
+        return panel.presentSearch()
+    }
+
+    func cancelSearch() {
+        if panel.isSearching { cancel() }
+    }
 }
 
 private func workspaceChooserTapCallback(
@@ -224,15 +245,28 @@ private func workspaceChooserTapCallback(
     return unsafe Unmanaged.passUnretained(event)
 }
 
-private final class WorkspaceChooserPanel: NSPanelHud {
+private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NSWindowDelegate {
     private var updates: AnyCancellable?
     private var presentationScreen: NSScreen?
-    override var canBecomeKey: Bool { false }
+    private(set) var isSearching = false
+    private let searchField = NSSearchField()
+    private var searchHost: NSHostingView<WorkspaceChooserView>?
+    private var previousApp: NSRunningApplication?
+    private var query = ""
+    private var selectedName: String?
+    private var results: [WorkspaceViewModel] = []
+    override var canBecomeKey: Bool { isSearching }
     override var canBecomeMain: Bool { false }
 
     override init() {
         super.init()
         ignoresMouseEvents = true
+        delegate = self
+        searchField.placeholderString = "Search workspaces and applications"
+        searchField.delegate = self
+        searchField.sendsSearchStringImmediately = true
+        searchField.sendsWholeSearchString = false
+        searchField.focusRingType = .none
         let model = TrayMenuModel.shared
         updates = model.$workspaces.combineLatest(model.$workspaceChooser)
             .receive(on: RunLoop.main)
@@ -255,13 +289,115 @@ private final class WorkspaceChooserPanel: NSPanelHud {
         model.showWorkspaceTitles(.chooser)
     }
 
+    func presentSearch() -> Bool {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.screens.first
+        else { return false }
+        presentationScreen = screen
+        previousApp = NSWorkspace.shared.frontmostApplication
+        query = ""
+        searchField.stringValue = ""
+        selectedName = nil
+        isSearching = true
+        ignoresMouseEvents = false
+        pauseHotkeysForChooserSearch(true)
+        render(workspaces: TrayMenuModel.shared.workspaces, settings: TrayMenuModel.shared.workspaceChooser, screen: screen)
+        makeKeyAndOrderFront(nil)
+        guard isKeyWindow, makeFirstResponder(searchField) else {
+            WorkspaceChooser.shared.cancel()
+            return false
+        }
+        TrayMenuModel.shared.showWorkspaceTitles(.chooser)
+        return true
+    }
+
+    func dismissSearch(restoreFocus: Bool = true) {
+        guard isSearching else { return }
+        isSearching = false
+        orderOut(nil)
+        searchHost = nil
+        ignoresMouseEvents = true
+        pauseHotkeysForChooserSearch(false)
+        // A nonactivating panel normally returns key focus automatically; only reactivate if AeroSpace became active.
+        if restoreFocus, NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+            previousApp?.activate(options: [])
+        }
+        previousApp = nil
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        guard isSearching else { return }
+        dismissSearch(restoreFocus: false)
+        WorkspaceChooser.shared.cancel()
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        query = searchField.stringValue
+        refreshSearch()
+    }
+
+    private func refreshSearch() {
+        guard isSearching, let screen = presentationScreen else { return }
+        render(workspaces: TrayMenuModel.shared.workspaces, settings: TrayMenuModel.shared.workspaceChooser, screen: screen)
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        guard isSearching, !textView.hasMarkedText() else { return false }
+        switch commandSelector {
+            case #selector(NSResponder.cancelOperation(_:)):
+                WorkspaceChooser.shared.cancel()
+            case #selector(NSResponder.moveUp(_:)), #selector(NSResponder.moveDown(_:)):
+                guard !results.isEmpty else { return true }
+                let current = results.firstIndex(where: { $0.name == selectedName }) ?? 0
+                let delta = commandSelector == #selector(NSResponder.moveUp(_:)) ? -1 : 1
+                selectedName = results[min(max(0, current + delta), results.count - 1)].name
+                refreshSearch()
+            case #selector(NSResponder.insertNewline(_:)):
+                guard let name = selectedName else { return true }
+                dismissSearch(restoreFocus: false)
+                WorkspaceChooser.shared.cancel()
+                Task.startUnstructured {
+                    try await runLightSession(.menuBarButton, .checkServerIsEnabledOrDie()) {
+                        if case .cmd(let command) = parseCommand(["workspace", "--", name]) {
+                            let result = await command.run(.defaultEnv, .emptyStdin)
+                            if result.exitCode.rawValue != 0 {
+                                MessageModel.shared.message = Message(
+                                    description: "Workspace selection failed",
+                                    body: result.stderr.joined(separator: "\n"), containsWarnings: false,
+                                )
+                            }
+                        }
+                    }
+                }
+            default: return false
+        }
+        return true
+    }
+
     private func render(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings, screen: NSScreen) {
-        let layout = WorkspaceChooserLayout(workspaces: workspaces, settings: settings, availableSize: screen.visibleFrame.size)
+        var layout = WorkspaceChooserLayout(workspaces: workspaces, settings: settings, availableSize: screen.visibleFrame.size)
+        if isSearching {
+            results = workspaceChooserSearch(workspaces: layout.workspaces, query: query)
+            if !results.contains(where: { $0.name == selectedName }) { selectedName = results.first?.name }
+            layout = WorkspaceChooserLayout(searchResults: results, availableSize: screen.visibleFrame.size)
+        }
         let width = layout.size.width
         let height = layout.size.height
-        let view = NSHostingView(rootView: WorkspaceChooserView(model: TrayMenuModel.shared, layout: layout))
+        let root = WorkspaceChooserView(model: TrayMenuModel.shared, layout: layout, isSearching: isSearching, selectedName: selectedName)
+        let view = searchHost ?? NSHostingView(rootView: root)
+        view.rootView = root
         view.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        contentView = view
+        if isSearching {
+            if searchHost == nil {
+                searchHost = view
+                let container = NSView()
+                container.addSubview(view)
+                container.addSubview(searchField)
+                contentView = container
+            }
+            searchField.frame = NSRect(x: 22, y: height - 52, width: max(1, width - 44), height: 28)
+        } else {
+            contentView = view
+        }
         setFrame(NSRect(
             x: screen.visibleFrame.midX - width / 2,
             y: screen.visibleFrame.midY - height / 2,
@@ -275,6 +411,14 @@ struct WorkspaceChooserLayout {
     let rowsPerColumn: Int
     let columnCount: Int
     let size: CGSize
+
+    init(searchResults: [WorkspaceViewModel], availableSize: CGSize) {
+        workspaces = searchResults
+        rowsPerColumn = max(1, searchResults.count)
+        columnCount = 1
+        size = CGSize(width: min(480, max(1, availableSize.width - 32)),
+                      height: min(max(1, availableSize.height - 48), CGFloat(rowsPerColumn) * 36 + 110))
+    }
 
     init(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings, availableSize: CGSize) {
         self.workspaces = workspaces.filter { !settings.hideEmptyWorkspaces || !$0.isEffectivelyEmpty || $0.isFocused }
@@ -308,18 +452,27 @@ struct WorkspaceChooserLayout {
 private struct WorkspaceChooserView: View {
     @ObservedObject var model: TrayMenuModel
     let layout: WorkspaceChooserLayout
+    var isSearching = false
+    var selectedName: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
+            if isSearching {
+                Color.clear.frame(height: 30)
+            } else { HStack {
                 Text("Workspaces").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Text("⌥").font(.system(size: 17, weight: .medium)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 10)
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     HStack(alignment: .top, spacing: 12) {
+                        if isSearching, layout.workspaces.isEmpty {
+                            Text("No matching workspaces").font(.system(size: 12)).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, minHeight: 34)
+                        }
                         ForEach(0 ..< layout.columnCount, id: \.self) { column in
                             VStack(spacing: 2) {
                                 ForEach(layout.column(column), id: \.name) { workspace in
@@ -341,7 +494,7 @@ private struct WorkspaceChooserView: View {
                                     }
                                     .padding(.horizontal, 10)
                                     .frame(height: 34)
-                                    .background(workspace.isFocused ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                                    .background((isSearching ? workspace.name == selectedName : workspace.isFocused) ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7))
                                     .id(workspace.name)
                                 }
                             }
@@ -349,9 +502,10 @@ private struct WorkspaceChooserView: View {
                         }
                     }
                 }
-                .onAppear { proxy.scrollTo(layout.workspaces.first(where: \.isFocused)?.name, anchor: .center) }
+                .onAppear { proxy.scrollTo(isSearching ? selectedName : layout.workspaces.first(where: \.isFocused)?.name, anchor: .center) }
+                .onChange(of: selectedName) { name in proxy.scrollTo(name, anchor: .center) }
             }
-            Text("Use your workspace shortcut to switch")
+            Text(isSearching ? "↑ ↓ Navigate · Return Switch · Esc Cancel" : "Use your workspace shortcut to switch")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)

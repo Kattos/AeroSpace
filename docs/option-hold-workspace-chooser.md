@@ -14,6 +14,44 @@ released and pressed again. The panel does not activate AeroSpace or capture
 keyboard shortcuts. The clicked menu bar menu continues to work as before.
 The chooser is unavailable while AeroSpace is disabled or Secure Input is active.
 
+## Persistent search
+
+Run `aerospace workspace-chooser-search`, or bind the native command yourself:
+
+```toml
+[mode.main.binding]
+alt-space = 'workspace-chooser-search'
+```
+
+This is an example, not a default binding. Option+F and Option+Enter already have
+bindings in the local configuration; Option+Space was absent from the inspected
+AeroSpace bindings. Other applications may still register it globally.
+
+Search stays open when Option is released. Type normally in the native search
+field, use Up/Down to select, Return to switch, and Escape to cancel. Input method
+composition owns Return until committed. The field and editor survive title and
+workspace updates. Results use a single column and existing entry styling; no
+matches shows “No matching workspaces”. Empty queries preserve ordinary workspace
+order and `hide-empty-workspaces`. Matching normalizes case and whitespace and
+uses ordered subsequences of full workspace names and cached app/Ghostty labels.
+Exact labels rank before prefixes, then matches with fewer leading/skipped
+characters; ties preserve the original workspace order.
+
+The nonactivating panel temporarily accepts keyboard focus only during search.
+AeroSpace Carbon shortcuts pause until search closes; rebuilding hotkeys during
+reload keeps them paused and closing restores the current mode. Focus loss,
+disable, sleep and session resignation close search. The ordinary hold gesture,
+threshold, passive exclusion tap and fixed/auto columns remain unchanged outside
+search. No new shortcut config key or permission is needed. External global
+shortcuts can still intercept input. Physical typing, focus return and IME
+composition require manual runtime verification; source checks and compilation
+alone do not prove them.
+
+The separate `.build/chooser-search/AeroSpace-Release.app` and
+`.build/chooser-search/aerospace` contain the optimized search build with the
+exclude-keys package resources, ad hoc signed. Previous bundles are preserved;
+the application has not been launched or installed.
+
 ## Keys that other shortcuts consume
 
 `exclude-keys` covers the case where another app's global shortcut consumes the

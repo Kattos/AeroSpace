@@ -16,6 +16,21 @@ The chooser is unavailable while AeroSpace is disabled or Secure Input is active
 
 ## Persistent search
 
+Choose the search presentation under the existing `[workspace-chooser]` table:
+
+```toml
+search-style = "default"
+```
+
+`"default"` is the default: the input appears below the grid and search preserves
+the configured columns, entry size and position, with a 16-point gap. `"legacy"`
+restores the earlier top input, 14-point gap and single result column (480-point
+width bounded by the screen, height following results). Other values and types
+are rejected. Reload config to apply the setting to the next search; reload
+closes any open search. Both styles use the same native editor, input methods,
+matching (including pinyin), icons, colors and keyboard lifecycle. Ordinary hold
+layout continues to use `columns` in either style.
+
 Run `aerospace workspace-chooser-search`, or bind the native command yourself:
 
 ```toml
@@ -30,7 +45,7 @@ AeroSpace bindings. Other applications may still register it globally.
 Search stays open when Option is released. Type normally in the native search
 field, use Up/Down to select, Return to switch, and Escape to cancel. Input method
 composition owns Return until committed. The field and editor survive title and
-workspace updates. The input expands below the existing grid, preserving the
+workspace updates. With the default style, the input expands below the existing grid, preserving the
 configured columns and entry styling. Search keeps its entry width and position
 while filtering, with a 16-point gap above the field; no
 matches shows “No matching workspaces”. Empty queries preserve ordinary workspace

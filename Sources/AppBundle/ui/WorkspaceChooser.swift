@@ -254,6 +254,7 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
     private let searchField = NSSearchField()
     private var searchHost: NSHostingView<WorkspaceChooserView>?
     private var searchFrame: NSRect?
+    private var searchStyle: WorkspaceChooserSearchStyle = .default
     private var previousApp: NSRunningApplication?
     private var query = ""
     private var selectedName: String?
@@ -298,12 +299,14 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
         else { return false }
         let model = TrayMenuModel.shared
         let ordinary = WorkspaceChooserLayout(workspaces: model.workspaces, settings: model.workspaceChooser, availableSize: screen.visibleFrame.size)
+        searchStyle = model.workspaceChooser.searchStyle
         let origin = isVisible ? frame : NSRect(x: screen.visibleFrame.midX - ordinary.size.width / 2,
                                               y: screen.visibleFrame.midY - ordinary.size.height / 2,
                                               width: ordinary.size.width, height: ordinary.size.height)
         let height = min(screen.visibleFrame.height - 48, ordinary.size.height + 56)
         searchFrame = NSRect(x: origin.minX, y: max(screen.visibleFrame.minY + 24, origin.maxY - height),
                              width: origin.width, height: height)
+        if searchStyle == .legacy { searchFrame = nil }
         presentationScreen = screen
         previousApp = NSWorkspace.shared.frontmostApplication
         query = ""
@@ -391,11 +394,13 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
         if isSearching {
             results = workspaceChooserSearch(workspaces: layout.workspaces, query: query)
             if !results.contains(where: { $0.name == selectedName }) { selectedName = results.first?.name }
-            layout = WorkspaceChooserLayout(workspaces: results, settings: settings, availableSize: screen.visibleFrame.size, searching: true)
+            var searchSettings = settings
+            searchSettings.searchStyle = searchStyle
+            layout = WorkspaceChooserLayout(workspaces: results, settings: searchSettings, availableSize: screen.visibleFrame.size, searching: true)
         }
         let width = searchFrame?.width ?? layout.size.width
         let height = searchFrame?.height ?? layout.size.height
-        let root = WorkspaceChooserView(model: TrayMenuModel.shared, layout: layout, isSearching: isSearching, selectedName: selectedName)
+        let root = WorkspaceChooserView(model: TrayMenuModel.shared, layout: layout, isSearching: isSearching, selectedName: selectedName, searchStyle: searchStyle)
         let view = searchHost ?? (contentView as? NSHostingView<WorkspaceChooserView>) ?? NSHostingView(rootView: root)
         view.rootView = root
         view.frame = NSRect(x: 0, y: 0, width: width, height: height)
@@ -407,7 +412,8 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
                 container.addSubview(searchField)
                 contentView = container
             }
-            searchField.frame = NSRect(x: 22, y: 38, width: max(1, width - 44), height: 28)
+            searchField.frame = NSRect(x: 22, y: searchStyle == .legacy ? height - 52 : 38,
+                                       width: max(1, width - 44), height: 28)
         } else {
             contentView = view
         }
@@ -430,10 +436,11 @@ struct WorkspaceChooserLayout {
         let count = max(1, self.workspaces.count)
         let maxWidth = max(1, availableSize.width - 32)
         let maxHeight = max(1, availableSize.height - 48)
-        let overhead: CGFloat = searching ? 144 : 88
+        let legacy = searching && settings.searchStyle == .legacy
+        let overhead: CGFloat = searching ? (legacy ? 124 : 144) : 88
         let fittingRows = max(1, Int(max(0, maxHeight - overhead) / 36))
         let fittingColumns = max(1, Int(max(0, maxWidth - 24 + 12) / 252))
-        switch settings.columns {
+        switch legacy ? .single : settings.columns {
             case .auto:
                 columnCount = min((count + fittingRows - 1) / fittingRows, fittingColumns)
                 rowsPerColumn = max(min(count, fittingRows), (count + columnCount - 1) / columnCount)
@@ -445,7 +452,7 @@ struct WorkspaceChooserLayout {
                 rowsPerColumn = count
         }
         size = CGSize(
-            width: min(maxWidth, CGFloat(columnCount) * 336 + CGFloat(columnCount - 1) * 12 + 24),
+            width: min(maxWidth, legacy ? 480 : CGFloat(columnCount) * 336 + CGFloat(columnCount - 1) * 12 + 24),
             height: min(maxHeight, CGFloat(rowsPerColumn) * 36 + overhead),
         )
     }
@@ -460,15 +467,20 @@ private struct WorkspaceChooserView: View {
     let layout: WorkspaceChooserLayout
     var isSearching = false
     var selectedName: String?
+    var searchStyle: WorkspaceChooserSearchStyle = .default
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if isSearching && searchStyle == .legacy {
+                Color.clear.frame(height: 44)
+            } else {
             HStack {
                 Text("Workspaces").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 Text("⌥").font(.system(size: 17, weight: .medium)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 10)
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     HStack(alignment: .top, spacing: 12) {
@@ -515,7 +527,7 @@ private struct WorkspaceChooserView: View {
                 .onAppear { proxy.scrollTo(isSearching ? selectedName : layout.workspaces.first(where: \.isFocused)?.name, anchor: .center) }
                 .onChange(of: selectedName) { name in proxy.scrollTo(name, anchor: .center) }
             }
-            if isSearching {
+            if isSearching && searchStyle == .default {
                 Color.clear.frame(height: 32)
                     .padding(.top, 4)
             }

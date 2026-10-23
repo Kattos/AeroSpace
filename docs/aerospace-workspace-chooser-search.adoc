@@ -25,9 +25,18 @@ Matching uses case-insensitive ordered characters from workspace names and the
 existing application labels, including cached Ghostty titles. Exact matches rank
 first, then prefixes, then subsequences with fewer leading/skipped characters.
 Ties retain workspace order. An empty query preserves ordinary workspace order
-and the existing empty-workspace filter. The input expands below the same
-screen-bounded grid using the configured columns. Search keeps its entry width
-and position while filtering, including when no results match.
+and the existing empty-workspace filter.
+
+Under `[workspace-chooser]`, `search-style = "default"` (the default) expands
+the input below the screen-bounded grid using the configured columns, with a
+16-point gap. It keeps its entry size and position while filtering, including
+when no results match. `search-style = "legacy"` uses the earlier top input and
+single result column, with a 14-point gap and a screen-bounded 480-point width;
+its height follows the result count. Only these two exact strings are accepted.
+Reload config after changing the style; reload closes any open search and the
+next search uses the new style. Both styles share typing, input methods, icons,
+colors, pinyin matching and keyboard behavior. Ordinary Option-hold layout is
+unaffected.
 
 No shortcut is installed by default. For example:
 

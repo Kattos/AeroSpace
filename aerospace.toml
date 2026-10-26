@@ -299,6 +299,7 @@ M = 3
 "ghostty" = "#89B4FA"
 
 [workspace-chooser]
+display-scope = "all"
 show-app-icons = true
 columns = "fixed"
 hide-empty-workspaces = true

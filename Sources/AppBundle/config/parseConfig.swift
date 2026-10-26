@@ -358,6 +358,7 @@ func parseString(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfi
 private let workspaceChooserParser: [String: any ParserProtocol<WorkspaceChooserSettings>] = [
     "columns": Parser(\.columns, parseWorkspaceChooserColumns),
     "search-style": Parser(\.searchStyle, parseWorkspaceChooserSearchStyle),
+    "display-scope": Parser(\.displayScope, parseWorkspaceChooserDisplayScope),
     "adaptive-columns": Parser(\.columns, { raw, backtrace in parseBool(raw, backtrace).map { $0 ? .auto : .single } }),
     "hide-empty-workspaces": Parser(\.hideEmptyWorkspaces, parseBool),
     "show-app-icons": Parser(\.showAppIcons, parseBool),
@@ -382,6 +383,13 @@ func parseWorkspaceChooserSearchStyle(_ raw: OrderedJson, _ backtrace: ConfigBac
     parseString(raw, backtrace).flatMap { value in
         WorkspaceChooserSearchStyle(rawValue: value)
             .toResult(.init(backtrace, "Expected 'legacy' or 'default'"))
+    }
+}
+
+func parseWorkspaceChooserDisplayScope(_ raw: OrderedJson, _ backtrace: ConfigBacktrace) -> ResOrConfigParseDiagnostic<WorkspaceChooserDisplayScope> {
+    parseString(raw, backtrace).flatMap { value in
+        WorkspaceChooserDisplayScope(rawValue: value)
+            .toResult(.init(backtrace, "Expected 'current' or 'all'"))
     }
 }
 

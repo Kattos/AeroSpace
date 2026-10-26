@@ -151,6 +151,23 @@ large workspace counts can also exceed the adaptive layout's readable capacity;
 all entries remain in the scroll view rather than being dropped. Adaptive columns
 do not guarantee that arbitrary workspace counts fit simultaneously.
 
+## Displays
+
+`display-scope` selects which screens show the ordinary Option-hold chooser:
+
+```toml
+[workspace-chooser]
+display-scope = "current"
+```
+
+The default, `"current"`, shows the chooser on the invocation screen. Set it to
+`"all"` to show the same workspace list on every screen; each panel lays out its
+content within that screen's `visibleFrame`. Only the invocation screen has the
+search panel: mirror panels are hidden while searching. Only the exact strings
+`"current"` and `"all"` are accepted; other types or values produce a
+configuration error. A successful config reload dismisses the chooser so display
+configuration changes take effect safely.
+
 ## Application icons
 
 Application icons are optional and disabled by default:

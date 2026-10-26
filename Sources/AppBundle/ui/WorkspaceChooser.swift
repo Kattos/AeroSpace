@@ -10,12 +10,15 @@ final class WorkspaceChooser {
     static let shared = WorkspaceChooser()
 
     private let panel = WorkspaceChooserPanel()
+    private var mirrors: [WorkspaceChooserMirrorPanel] = []
     private var globalMonitor: Any?
     private var localMonitor: Any?
     private var timer: Timer?
     private var optionDown = false
     private var pressedAt: TimeInterval?
     private var settingsSubscription: AnyCancellable?
+    private var presentationSubscription: AnyCancellable?
+    private var displayScope: WorkspaceChooserDisplayScope = .current
     private var enabledSubscription: AnyCancellable?
     /// Carbon shortcuts (and a global NSEvent monitor) may consume keyDown before we see it, so excluded keys are
     /// observed through a passive CGEventTap. Mirrored here to keep the tap callback a cheap set lookup.
@@ -48,10 +51,29 @@ final class WorkspaceChooser {
         ) { _ in
             MainActor.assumeIsolated { self.resetState() }
         }
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main,
+        ) { _ in
+            MainActor.assumeIsolated { self.cancel() }
+        }
         settingsSubscription = TrayMenuModel.shared.$workspaceChooser
             .receive(on: RunLoop.main)
             .sink { [weak self] settings in
-                MainActor.assumeIsolated { self?.updateExclusions(settings.excludedKeyCodes) }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    if self.displayScope != settings.displayScope { self.cancel() }
+                    self.displayScope = settings.displayScope
+                    self.updateExclusions(settings.excludedKeyCodes)
+                }
+            }
+        presentationSubscription = TrayMenuModel.shared.$workspaces.combineLatest(TrayMenuModel.shared.$workspaceChooser)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] workspaces, settings in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.panel.refresh(workspaces: workspaces, settings: settings)
+                    for mirror in self.mirrors { mirror.refresh(workspaces: workspaces, settings: settings) }
+                }
             }
         enabledSubscription = TrayMenuModel.shared.$isEnabled.sink { [weak self] enabled in
             if !enabled { self?.cancel() }
@@ -167,7 +189,13 @@ final class WorkspaceChooser {
         pressedAt = nil
         panel.dismissSearch()
         panel.orderOut(nil)
+        dismissMirrors()
         TrayMenuModel.shared.hideWorkspaceTitles(.chooser)
+    }
+
+    private func dismissMirrors() {
+        for mirror in mirrors { mirror.orderOut(nil) }
+        mirrors.removeAll()
     }
 
     private func handle(_ event: NSEvent) {
@@ -218,7 +246,20 @@ final class WorkspaceChooser {
         let threshold = Double(TrayMenuModel.shared.workspaceChooser.holdThresholdMs) / 1000
         guard let pressedAt, ProcessInfo.processInfo.systemUptime - pressedAt >= threshold else { return }
         self.pressedAt = nil
-        panel.present()
+        let model = TrayMenuModel.shared
+        let screens = NSScreen.screens
+        guard !model.workspaces.isEmpty,
+              let screen = screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? screens.first
+        else { return }
+        panel.present(on: screen)
+        if model.workspaceChooser.displayScope == .all {
+            mirrors = screens.filter { $0 !== screen }.map { screen in
+                let mirror = WorkspaceChooserMirrorPanel()
+                mirror.present(on: screen)
+                return mirror
+            }
+        }
+        model.showWorkspaceTitles(.chooser)
     }
 
     func openSearch() -> Bool {
@@ -226,6 +267,7 @@ final class WorkspaceChooser {
         timer?.invalidate()
         timer = nil
         pressedAt = nil
+        dismissMirrors()
         return panel.presentSearch()
     }
 
@@ -247,9 +289,44 @@ private func workspaceChooserTapCallback(
     return unsafe Unmanaged.passUnretained(event)
 }
 
-private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NSWindowDelegate {
-    private var updates: AnyCancellable?
-    private var presentationScreen: NSScreen?
+private class WorkspaceChooserMirrorPanel: NSPanelHud {
+    fileprivate var presentationScreen: NSScreen?
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    override init() {
+        super.init()
+        ignoresMouseEvents = true
+    }
+
+    func present(on screen: NSScreen) {
+        presentationScreen = screen
+        let model = TrayMenuModel.shared
+        render(workspaces: model.workspaces, settings: model.workspaceChooser, screen: screen)
+        orderFrontRegardless()
+    }
+
+    func refresh(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings) {
+        guard isVisible, let screen = presentationScreen else { return }
+        render(workspaces: workspaces, settings: settings, screen: screen)
+    }
+
+    fileprivate func render(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings, screen: NSScreen) {
+        let layout = WorkspaceChooserLayout(workspaces: workspaces, settings: settings, availableSize: screen.visibleFrame.size)
+        let root = WorkspaceChooserView(model: TrayMenuModel.shared, layout: layout)
+        let view = (contentView as? NSHostingView<WorkspaceChooserView>) ?? NSHostingView(rootView: root)
+        view.rootView = root
+        view.frame = NSRect(origin: .zero, size: layout.size)
+        contentView = view
+        setFrame(NSRect(
+            x: screen.visibleFrame.midX - layout.size.width / 2,
+            y: screen.visibleFrame.midY - layout.size.height / 2,
+            width: layout.size.width, height: layout.size.height,
+        ), display: true)
+    }
+}
+
+private final class WorkspaceChooserPanel: WorkspaceChooserMirrorPanel, NSSearchFieldDelegate, NSWindowDelegate {
     private(set) var isSearching = false
     private let searchField = NSSearchField()
     private var searchHost: NSHostingView<WorkspaceChooserView>?
@@ -260,7 +337,6 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
     private var selectedName: String?
     private var results: [WorkspaceViewModel] = []
     override var canBecomeKey: Bool { isSearching }
-    override var canBecomeMain: Bool { false }
 
     override init() {
         super.init()
@@ -271,26 +347,6 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
         searchField.sendsSearchStringImmediately = true
         searchField.sendsWholeSearchString = false
         searchField.focusRingType = .none
-        let model = TrayMenuModel.shared
-        updates = model.$workspaces.combineLatest(model.$workspaceChooser)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] workspaces, settings in
-                MainActor.assumeIsolated {
-                    guard let self, self.isVisible, let screen = self.presentationScreen else { return }
-                    self.render(workspaces: workspaces, settings: settings, screen: screen)
-                }
-            }
-    }
-
-    func present() {
-        let model = TrayMenuModel.shared
-        guard !model.workspaces.isEmpty,
-              let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.screens.first
-        else { return }
-        presentationScreen = screen
-        render(workspaces: model.workspaces, settings: model.workspaceChooser, screen: screen)
-        orderFrontRegardless()
-        model.showWorkspaceTitles(.chooser)
     }
 
     func presentSearch() -> Bool {
@@ -389,7 +445,11 @@ private final class WorkspaceChooserPanel: NSPanelHud, NSSearchFieldDelegate, NS
         return true
     }
 
-    private func render(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings, screen: NSScreen) {
+    override fileprivate func render(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings, screen: NSScreen) {
+        guard isSearching else {
+            super.render(workspaces: workspaces, settings: settings, screen: screen)
+            return
+        }
         var layout = WorkspaceChooserLayout(workspaces: workspaces, settings: settings, availableSize: screen.visibleFrame.size)
         if isSearching {
             results = workspaceChooserSearch(workspaces: layout.workspaces, query: query)

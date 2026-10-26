@@ -94,12 +94,9 @@ final class WorkspaceChooser {
 
     /// A passive listen-only tap sees keyDown before normal shortcut dispatch. It never consumes or rewrites events.
     private func installEventTap() {
+        if let tap = eventTap, !CFMachPortIsValid(tap) { removeEventTap() }
         guard eventTap == nil else { return }
-        // Preflight without prompting: excluded keys are a best-effort refinement of a working chooser
-        guard CGPreflightListenEventAccess() else {
-            reportMissingEventTapOnce()
-            return
-        }
+        // Let tap creation decide access: Accessibility may allow it without ListenEvent preflight access.
         let mask: UInt64 = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
         guard let tap = unsafe CGEvent.tapCreate(
             tap: .cghidEventTap,
@@ -145,17 +142,18 @@ final class WorkspaceChooser {
 
     /// Runs on the main run loop. Must stay cheap: no AX work, no config parsing, no event mutation.
     fileprivate func handleTapEvent(_ type: CGEventType, keyCode: UInt32, optionDown: Bool) {
-        guard !panel.isSearching else { return }
         switch type {
             case .tapDisabledByTimeout, .tapDisabledByUserInput:
                 // A slow callback or an explicit disable stops delivery; re-arm so exclusions keep working
                 if let tap = eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
             case .keyDown:
+                guard !panel.isSearching else { return }
                 // Read the flags of this event rather than trusting the possibly stale `optionDown`
                 if optionDown, excludedKeyCodes.contains(keyCode) {
                     suppressWhileOptionHeld()
                 }
             case .flagsChanged:
+                guard !panel.isSearching else { return }
                 // Both Option keys: suppression ends only once no Option remains down
                 if !optionDown {
                     self.optionDown = false
@@ -204,6 +202,11 @@ final class WorkspaceChooser {
             return
         }
         guard event.type == .flagsChanged else {
+            if event.type == .keyDown, event.modifierFlags.contains(.option),
+               excludedKeyCodes.contains(UInt32(event.keyCode)) {
+                suppressWhileOptionHeld()
+                return
+            }
             cancel()
             return
         }
@@ -222,6 +225,7 @@ final class WorkspaceChooser {
               NSEvent.pressedMouseButtons == 0,
               TrayMenuModel.shared.isEnabled, !IsSecureEventInputEnabled()
         else { return }
+        if !excludedKeyCodes.isEmpty { installEventTap() }
         pressedAt = ProcessInfo.processInfo.systemUptime
         let timer = Timer(timeInterval: 0.05, repeats: true) { _ in
             MainActor.assumeIsolated { self.tick() }

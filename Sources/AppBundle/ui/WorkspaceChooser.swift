@@ -94,9 +94,13 @@ final class WorkspaceChooser {
 
     /// A passive listen-only tap sees keyDown before normal shortcut dispatch. It never consumes or rewrites events.
     private func installEventTap() {
-        if let tap = eventTap, !CFMachPortIsValid(tap) { removeEventTap() }
+        if let tap = eventTap, !CFMachPortIsValid(tap) || !CGEvent.tapIsEnabled(tap: tap) { removeEventTap() }
         guard eventTap == nil else { return }
-        // Let tap creation decide access: Accessibility may allow it without ListenEvent preflight access.
+        // Without listening access, creation can succeed after silently stripping keyDown from the mask.
+        guard CGPreflightListenEventAccess() else {
+            reportMissingEventTapOnce()
+            return
+        }
         let mask: UInt64 = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
         guard let tap = unsafe CGEvent.tapCreate(
             tap: .cghidEventTap,

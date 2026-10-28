@@ -41,7 +41,10 @@ extension HotKey {
         hotkeys[binding.descriptionWithKeyCode] = HotKey(key: binding.keyCode, modifiers: binding.modifiers, keyDownHandler: {
             Task.startUnstructured {
                 guard !chooserSearchPausesHotkeys else { return }
-                WorkspaceChooser.shared.cancel()
+                let commands = activeMode.flatMap { config.modes[$0]?.bindings[binding.descriptionWithKeyCode]?.commands }
+                if commands?.isSingleWorkspaceChooserSearch != true {
+                    WorkspaceChooser.shared.cancel()
+                }
                 if let activeMode {
                     broadcastEvent(.bindingTriggered(
                         mode: activeMode,
@@ -63,6 +66,13 @@ extension HotKey {
     if oldMode != targetMode {
         broadcastEvent(.modeChanged(mode: targetMode))
         _ = await config.onModeChanged.run(.defaultEnv, .emptyStdin)
+    }
+}
+
+private extension Shell where T == any Command {
+    var isSingleWorkspaceChooserSearch: Bool {
+        guard case .cmd(let command) = self else { return false }
+        return command is WorkspaceChooserSearchCommand
     }
 }
 

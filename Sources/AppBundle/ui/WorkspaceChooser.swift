@@ -25,7 +25,7 @@ final class WorkspaceChooser {
     private var excludedKeyCodes: Set<UInt32> = []
     private var eventTap: CFMachPort?
     private var eventTapSource: CFRunLoopSource?
-    /// An excluded key was pressed while Option was held: stay suppressed until every Option key is released.
+    /// A shortcut or chooser click occurred while Option was held: wait until every Option key is released.
     private var suppressed = false
     private var reportedMissingTap = false
 
@@ -201,8 +201,18 @@ final class WorkspaceChooser {
     }
 
     private func handle(_ event: NSEvent) {
+        if event.type == .leftMouseDown, let window = event.window,
+           window === panel || mirrors.contains(where: { $0 === window }) {
+            timer?.invalidate()
+            timer = nil
+            pressedAt = nil
+            optionDown = event.modifierFlags.contains(.option)
+            suppressed = suppressed || optionDown
+            return
+        }
         if panel.isSearching {
             optionDown = event.modifierFlags.contains(.option)
+            if !optionDown { suppressed = false }
             return
         }
         guard event.type == .flagsChanged else {
@@ -282,6 +292,30 @@ final class WorkspaceChooser {
     func cancelSearch() {
         if panel.isSearching { cancel() }
     }
+
+    func selectWorkspace(_ name: String, dismissOnSuccess: Bool = true) {
+        timer?.invalidate()
+        timer = nil
+        pressedAt = nil
+        suppressed = suppressed || NSEvent.modifierFlags.contains(.option)
+        Task.startUnstructured {
+            let succeeded = try await runLightSession(.menuBarButton, .checkServerIsEnabledOrDie()) {
+                if case .cmd(let command) = parseCommand(["workspace", "--", name]) {
+                    let result = await command.run(.defaultEnv, .emptyStdin)
+                    if result.exitCode.rawValue != 0 {
+                        MessageModel.shared.message = Message(
+                            description: "Workspace selection failed",
+                            body: result.stderr.joined(separator: "\n"), containsWarnings: false,
+                        )
+                        return false
+                    }
+                    return true
+                }
+                return false
+            }
+            if succeeded, dismissOnSuccess { self.cancel() }
+        }
+    }
 }
 
 private func workspaceChooserTapCallback(
@@ -304,7 +338,8 @@ private class WorkspaceChooserMirrorPanel: NSPanelHud {
 
     override init() {
         super.init()
-        ignoresMouseEvents = true
+        ignoresMouseEvents = false
+        becomesKeyOnlyIfNeeded = true
     }
 
     func present(on screen: NSScreen) {
@@ -322,7 +357,7 @@ private class WorkspaceChooserMirrorPanel: NSPanelHud {
     fileprivate func render(workspaces: [WorkspaceViewModel], settings: WorkspaceChooserSettings, screen: NSScreen) {
         let layout = WorkspaceChooserLayout(workspaces: workspaces, settings: settings, availableSize: screen.visibleFrame.size)
         let root = WorkspaceChooserView(model: TrayMenuModel.shared, layout: layout)
-        let view = (contentView as? NSHostingView<WorkspaceChooserView>) ?? NSHostingView(rootView: root)
+        let view = (contentView as? WorkspaceChooserHostingView) ?? WorkspaceChooserHostingView(rootView: root)
         view.rootView = root
         view.frame = NSRect(origin: .zero, size: layout.size)
         contentView = view
@@ -337,7 +372,7 @@ private class WorkspaceChooserMirrorPanel: NSPanelHud {
 private final class WorkspaceChooserPanel: WorkspaceChooserMirrorPanel, NSSearchFieldDelegate, NSWindowDelegate {
     private(set) var isSearching = false
     private let searchField = NSSearchField()
-    private var searchHost: NSHostingView<WorkspaceChooserView>?
+    private var searchHost: WorkspaceChooserHostingView?
     private var searchFrame: NSRect?
     private var searchStyle: WorkspaceChooserSearchStyle = .default
     private var previousApp: NSRunningApplication?
@@ -348,7 +383,6 @@ private final class WorkspaceChooserPanel: WorkspaceChooserMirrorPanel, NSSearch
 
     override init() {
         super.init()
-        ignoresMouseEvents = true
         delegate = self
         searchField.placeholderString = "Search workspaces and applications"
         searchField.delegate = self
@@ -395,7 +429,6 @@ private final class WorkspaceChooserPanel: WorkspaceChooserMirrorPanel, NSSearch
         orderOut(nil)
         searchHost = nil
         searchFrame = nil
-        ignoresMouseEvents = true
         pauseHotkeysForChooserSearch(false)
         // A nonactivating panel normally returns key focus automatically; only reactivate if AeroSpace became active.
         if restoreFocus, NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
@@ -435,19 +468,7 @@ private final class WorkspaceChooserPanel: WorkspaceChooserMirrorPanel, NSSearch
                 guard let name = selectedName else { return true }
                 dismissSearch(restoreFocus: false)
                 WorkspaceChooser.shared.cancel()
-                Task.startUnstructured {
-                    try await runLightSession(.menuBarButton, .checkServerIsEnabledOrDie()) {
-                        if case .cmd(let command) = parseCommand(["workspace", "--", name]) {
-                            let result = await command.run(.defaultEnv, .emptyStdin)
-                            if result.exitCode.rawValue != 0 {
-                                MessageModel.shared.message = Message(
-                                    description: "Workspace selection failed",
-                                    body: result.stderr.joined(separator: "\n"), containsWarnings: false,
-                                )
-                            }
-                        }
-                    }
-                }
+                WorkspaceChooser.shared.selectWorkspace(name, dismissOnSuccess: false)
             default: return false
         }
         return true
@@ -469,7 +490,7 @@ private final class WorkspaceChooserPanel: WorkspaceChooserMirrorPanel, NSSearch
         let width = searchFrame?.width ?? layout.size.width
         let height = searchFrame?.height ?? layout.size.height
         let root = WorkspaceChooserView(model: TrayMenuModel.shared, layout: layout, isSearching: isSearching, selectedName: selectedName, searchStyle: searchStyle)
-        let view = searchHost ?? (contentView as? NSHostingView<WorkspaceChooserView>) ?? NSHostingView(rootView: root)
+        let view = searchHost ?? (contentView as? WorkspaceChooserHostingView) ?? WorkspaceChooserHostingView(rootView: root)
         view.rootView = root
         view.frame = NSRect(x: 0, y: 0, width: width, height: height)
         if isSearching {
@@ -530,6 +551,10 @@ struct WorkspaceChooserLayout {
     }
 }
 
+private final class WorkspaceChooserHostingView: NSHostingView<WorkspaceChooserView> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 private struct WorkspaceChooserView: View {
     @ObservedObject var model: TrayMenuModel
     let layout: WorkspaceChooserLayout
@@ -559,6 +584,9 @@ private struct WorkspaceChooserView: View {
                         ForEach(0 ..< layout.columnCount, id: \.self) { column in
                             VStack(spacing: 2) {
                                 ForEach(layout.column(column), id: \.name) { workspace in
+                                    Button {
+                                        WorkspaceChooser.shared.selectWorkspace(workspace.name)
+                                    } label: {
                                     HStack(spacing: 10) {
                                         Image(systemName: workspace.isFocused ? "checkmark.circle.fill" : "circle")
                                             .foregroundStyle(workspace.isFocused ? Color.accentColor : Color.secondary)
@@ -583,8 +611,12 @@ private struct WorkspaceChooserView: View {
                                         Spacer(minLength: 0)
                                     }
                                     .padding(.horizontal, 10)
-                                    .frame(height: 34)
+                                    .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34)
                                     .background((isSearching ? workspace.name == selectedName : workspace.isFocused) ? Color.accentColor.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                                    .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .focusable(false)
                                     .id(workspace.name)
                                 }
                             }
@@ -599,7 +631,7 @@ private struct WorkspaceChooserView: View {
                 Color.clear.frame(height: 32)
                     .padding(.top, 4)
             }
-            Text(isSearching ? "↑ ↓ Navigate · Return Switch · Esc Cancel" : "Use your workspace shortcut to switch")
+            Text(isSearching ? "↑ ↓ Navigate · Return / Click Switch · Esc Cancel" : "Click or use a workspace shortcut to switch")
                 .font(.system(size: 11))
                 .frame(height: isSearching ? 14 : nil)
                 .foregroundStyle(.secondary)

@@ -7,9 +7,12 @@ the delay in milliseconds, for example `hold-threshold-ms = 250`. The default is
 later than the configured threshold. Reloading the config updates the threshold.
 The list uses the same workspace names, application summaries and focus state as
 the menu bar menu. Use an existing workspace shortcut while holding Option to
-switch workspaces and dismiss the list. Release Option to dismiss it.
+switch workspaces and dismiss the list, or click any workspace row on any visible
+chooser panel. A successful click switches to that workspace and closes all
+panels. Holding Option after a click does not reopen the list; release it before
+starting another hold. Release Option to dismiss it.
 
-Another modifier, a key or a mouse click cancels the gesture until Option is
+Another modifier, a key or a mouse click outside the chooser cancels the gesture until Option is
 released and pressed again. The panel does not activate AeroSpace or capture
 keyboard shortcuts. The clicked menu bar menu continues to work as before.
 The chooser is unavailable while AeroSpace is disabled or Secure Input is active.
@@ -43,7 +46,7 @@ bindings in the local configuration; Option+Space was absent from the inspected
 AeroSpace bindings. Other applications may still register it globally.
 
 Search stays open when Option is released. Type normally in the native search
-field, use Up/Down to select, Return to switch, and Escape to cancel. Input method
+field, use Up/Down to select, Return or a row click to switch, and Escape to cancel. Input method
 composition owns Return until committed. The field and editor survive title and
 workspace updates. With the default style, the input expands below the existing grid, preserving the
 configured columns and entry styling. Search keeps its entry width and position
@@ -133,7 +136,7 @@ can narrow to roughly 240 points before additional columns are stopped. Titles
 retain single-line tail truncation. For 31 rows, visible heights of 900 and 800
 points need two columns (21 and 18 rows per column respectively), provided the
 screen has room for two readable columns. The panel retains its mouse-screen
-selection and does not activate or capture mouse events.
+selection and does not activate or take keyboard focus. Rows accept mouse clicks.
 
 With `hide-empty-workspaces = true`, only workspaces with zero owned windows are
 omitted; the focused workspace always remains visible even when empty. Floating
@@ -144,9 +147,8 @@ this chooser: it does not remove workspaces or change shortcut targets. Filterin
 runs before geometry is calculated, and both settings update an open panel on
 configuration reload, as do changes to its workspace list.
 
-In fixed or single mode, if rows exceed available height, the scroll view remains,
-but this click-through
-panel offers no practical mouse scrolling. Extremely narrow/short screens or very
+In fixed or single mode, if rows exceed available height, use the scroll view to
+reach more rows. Extremely narrow/short screens or very
 large workspace counts can also exceed the adaptive layout's readable capacity;
 all entries remain in the scroll view rather than being dropped. Adaptive columns
 do not guarantee that arbitrary workspace counts fit simultaneously.

@@ -5,6 +5,7 @@ extension MonitorDescription {
         switch self {
             case .sequenceNumber(let number): sortedMonitors.getOrNil(atIndex: number - 1)
             case .main: mainMonitor
+            case .mainIfTwo: sortedMonitors.count == 2 ? mainMonitor : nil
             case .pattern(let regex): sortedMonitors.first { $0.name.contains(caseInsensitiveRegex: regex) }
             case .secondary:
                 sortedMonitors.takeIf { $0.count == 2 }?

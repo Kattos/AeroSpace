@@ -1,6 +1,7 @@
 public enum MonitorDescription: Equatable, Sendable {
     case sequenceNumber(Int)
     case main
+    case mainIfTwo
     case secondary
     case pattern(CaseInsensitiveRegex)
 
@@ -20,6 +21,9 @@ public func parseMonitorDescription(_ raw: String) -> ResOrStr<MonitorDescriptio
     }
     if raw == "main" {
         return .success(.main)
+    }
+    if raw == "main-if-two" {
+        return .success(.mainIfTwo)
     }
     if raw == "secondary" {
         return .success(.secondary)

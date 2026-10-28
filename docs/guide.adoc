@@ -810,6 +810,7 @@ workspaces to always appear on particular monitors
 Supported monitor patterns:
 
 * `main` - "Main" monitor ("main" as in `System Settings -> Displays -> Use as`)
+* `main-if-two` - Main monitor only when there are exactly two monitors
 * `secondary` - Non-main monitor in case when there are only two monitors
 * `<number>` (e.g. `1`, `2`) - Sequence number of the monitor from left to right. 1-based indexing
 * `<regex-pattern>` (e.g. `+dell.*+`, `+built-in.*+`) - Case insensitive regex substring pattern

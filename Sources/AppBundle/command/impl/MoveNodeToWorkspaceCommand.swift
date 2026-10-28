@@ -24,7 +24,22 @@ struct MoveNodeToWorkspaceCommand: Command {
             case .direct(let name):
                 targetWorkspace = Workspace.get(byName: name.raw)
         }
-        return moveWindowToWorkspace(window, targetWorkspace, io, focusFollowsWindow: args.focusFollowsWindow, failIfNoop: args.failIfNoop)
+        let shouldRestoreWorkspace = !args.focusFollowsWindow && subjectWs != nil && focus.workspace == subjectWs
+        let result = moveWindowToWorkspace(window, targetWorkspace, io, focusFollowsWindow: args.focusFollowsWindow, failIfNoop: args.failIfNoop)
+        guard result == .succ, shouldRestoreWorkspace, let subjectWs, subjectWs.isEffectivelyEmpty else { return result }
+
+        let sourceMonitorPoint = subjectWs.workspaceMonitor.rect.topLeftCorner
+        let previousWorkspace = prevFocusedWorkspace
+        let fallbackWorkspace = Workspace.all.first {
+            $0 != subjectWs && !$0.isEffectivelyEmpty && $0.workspaceMonitor.rect.topLeftCorner == sourceMonitorPoint
+        }
+        let destination = previousWorkspace.flatMap {
+            $0 != subjectWs && !$0.isEffectivelyEmpty && $0.workspaceMonitor.rect.topLeftCorner == sourceMonitorPoint ? $0 : nil
+        } ?? fallbackWorkspace
+        if let destination {
+            _ = destination.focusWorkspace()
+        }
+        return result
     }
 }
 
